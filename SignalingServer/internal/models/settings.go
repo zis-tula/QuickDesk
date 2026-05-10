@@ -19,6 +19,10 @@ type Settings struct {
 	TurnAuthSecret    string `gorm:"size:500" json:"turnAuthSecret"`
 	TurnCredentialTTL int    `gorm:"default:86400" json:"turnCredentialTtl"`
 	StunURLs          string `gorm:"type:text" json:"stunUrls"`
+	// Bumped each time an admin writes any TURN/STUN field. Hosts compare
+	// this against the version echoed in heartbeat responses to decide
+	// whether to refetch /v1/ice-config (§2.19).
+	TurnConfigVersion int64 `gorm:"not null;default:1" json:"turnConfigVersion"`
 
 	// Security
 	APIKey           string `gorm:"size:500" json:"apiKey"`
