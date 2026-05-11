@@ -29,8 +29,8 @@ func (h *AdminAuditHandler) List(c *gin.Context) {
 		Limit:         p.Limit + 1,
 		Action:        c.Query("action"),
 		AdminUsername: c.Query("admin"),
-		DateFrom:      c.Query("dateFrom"),
-		DateTo:        c.Query("dateTo"),
+		DateFrom:      c.Query("date_from"),
+		DateTo:        c.Query("date_to"),
 	})
 	if err != nil {
 		ProblemInternal(c, err.Error())

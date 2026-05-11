@@ -59,12 +59,20 @@ export class Session extends EventTarget {
 
     /**
      * 开始连接
-     * @param {string} deviceId 
-     * @param {string} accessCode 
+     *
+     * §2.6 / §2.13 — the signal_token is used for the WS first-frame auth
+     * so the access_code never appears in the URL. access_code is still
+     * required because it's the SPAKE2 shared secret with the host
+     * (host verifies "client knew the code" end-to-end).
+     *
+     * @param {string} deviceId
+     * @param {string} accessCode  — shared secret for SPAKE2 (not on the wire)
+     * @param {string} signalToken — one-shot token issued by access-code:verify
      */
-    async connect(deviceId, accessCode) {
+    async connect(deviceId, accessCode, signalToken) {
         this.deviceId = deviceId;
         this.accessCode = accessCode;
+        this.signalToken = signalToken;
 
         try {
             this._setState(SessionState.CONNECTING);
@@ -82,7 +90,8 @@ export class Session extends EventTarget {
             const clientUUID = generateUUID().replace(/-/g, '').substring(0, 12);
             const localJid = `webclient_${clientUUID}@quickdesk.local/chromoting_ftl_quickdesk_client`;
             const remoteJid = `${deviceId}@quickdesk.local/chromoting_ftl_quickdesk_host`;
-            
+            this._clientId = `webclient_${clientUUID}`;
+
             // 设置 JingleBuilder 的 JID
             this.jingleBuilder.localJid = localJid;
             this.jingleBuilder.remoteJid = remoteJid;
@@ -95,16 +104,22 @@ export class Session extends EventTarget {
             );
             await this.authenticator.initialize();
 
-            // 3. 连接 WebSocket
+            // 3. 连接 WebSocket (§2.13: first-frame auth with signal_token).
             this.transport = new WebSocketTransport({
                 signalingUrl: this.signalingUrl,
                 onMessage: (msg) => this._onSignalingMessage(msg),
-                onOpen: () => this._log('WebSocket connected'),
+                onOpen: () => this._log('WebSocket connected, awaiting auth_ok'),
+                onAuthOk: () => this._log('WebSocket auth_ok received'),
                 onClose: (code, reason) => this._onWebSocketClose(code, reason),
                 onError: (err) => this._onWebSocketError(err),
             });
 
-            await this.transport.connect(deviceId, accessCode);
+            await this.transport.connect({
+                deviceId,
+                signalToken,
+                clientId: this._clientId,
+                role: 'client',
+            });
 
             // 4. 创建 RTCPeerConnection
             this._createPeerConnection();
@@ -433,11 +448,35 @@ export class Session extends EventTarget {
 
     /**
      * 处理 JSON 控制消息
+     *
+     * §2.15 / §2.13: signaling WS 可能在 auth_ok 之后收到服务端 push
+     * 的错误/状态帧。必须识别并把会话状态改到 FAILED 以便 UI 提示：
+     *   - {type:"error", data:{code:"HOST_OFFLINE"}}
+     *       → host 没连 signaling，clean 提示"对方设备离线"
+     *   - {type:"error", data:{code:"PEER_DISCONNECTED"}}
+     *       → host 中途掉线（原 wsconn DEL 时广播），按对端掉线处理
+     *   - {type:"error", data:{code:"TOKEN_INVALID"}} 等
+     *       → signal_token 校验失败（理论上 websocket-transport
+     *         层 auth_ok 阶段就处理了；auth_ok 之后再收到视为异常）
+     * 其它 JSON control frame 继续 emit jsonMessage 给上层观察者。
      * @private
      */
     _handleJsonMessage(json) {
         this._log(`JSON message: ${json.type || 'unknown'}`);
         this._emitEvent('jsonMessage', json);
+
+        if (json.type !== 'error') return;
+        const code = (json.data && json.data.code) || '';
+        this._log(`Signaling error: ${code}`, 'error');
+        // These codes all map to "the session cannot continue" — flip
+        // to FAILED so remote-main.js records the connection result
+        // as `failed` (§2.15 table row "signal WS 会话期间 host 离线").
+        if (code === 'HOST_OFFLINE' ||
+            code === 'PEER_DISCONNECTED' ||
+            code === 'TOKEN_INVALID' ||
+            code === 'AUTH_INVALID') {
+            this._setState(SessionState.FAILED, code);
+        }
     }
 
     /**
@@ -781,12 +820,17 @@ export class Session extends EventTarget {
 
     /**
      * 设置状态
+     *
+     * 可选传入 `reason` 代码（如 "HOST_OFFLINE"/"PEER_DISCONNECTED"），
+     * 用于 UI 显示精确的失败原因。调用方在 `_failWith(code, msg)` 包装
+     * 器里用；其它 _setState(X) 调用保留旧行为（reason 为空）。
      * @private
      */
-    _setState(newState) {
+    _setState(newState, reason) {
         const oldState = this.state;
         this.state = newState;
-        this._emitEvent('stateChange', { oldState, newState });
+        if (reason) this.failureReason = reason;
+        this._emitEvent('stateChange', { oldState, newState, reason: reason || this.failureReason || '' });
     }
 
     /**

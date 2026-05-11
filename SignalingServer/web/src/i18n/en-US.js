@@ -26,6 +26,13 @@ export default {
     lastUpdate: 'Last updated',
     unknown: 'Unknown'
   },
+  pagination: {
+    total: '{total} total',
+    page: 'Page {page}',
+    perPage: '{n} / page',
+    prev: 'Prev',
+    next: 'Next'
+  },
   nav: {
     adminPanel: 'Admin Panel',
     dashboard: 'Dashboard',
@@ -103,7 +110,13 @@ export default {
     basicInfo: 'Basic Info',
     boundUser: 'Bound User',
     connectionHistory: 'Connection History',
-    loadFailed: 'Failed to load device info'
+    loadFailed: 'Failed to load device info',
+    forceUnbind: 'Force Unbind',
+    forceUnbindConfirm: 'Force-unbind this device? The owner link will be cleared.',
+    rotateSecret: 'Revoke device_secret',
+    rotateSecretConfirm: 'Rotating the device_secret invalidates it immediately; the host will re-provision on the next request. Continue?',
+    rotateSecretSuccess: 'device_secret revoked; host will re-provision automatically on its next call',
+    deleteConfirm: 'Permanently delete this device? This cannot be undone.'
   },
   deviceList: {
     title: 'Devices',
@@ -186,7 +199,15 @@ export default {
     emailPlaceholder: 'Enter email',
     passwordPlaceholder: 'Enter password',
     levelPlaceholder: 'Select level',
-    channelPlaceholder: 'Select channel type'
+    channelPlaceholder: 'Select channel type',
+    revokeSessions: 'Kick sessions',
+    revokeSessionsConfirm: 'All of this user’s active sessions will be revoked and every client will be logged out. Continue?',
+    activeSessions: 'Active sessions',
+    sessionId: 'Session ID',
+    userAgent: 'Client',
+    lastSeen: 'Last seen',
+    loggedInAt: 'Logged in',
+    noActiveSessions: 'No active sessions'
   },
   adminUser: {
     title: 'Admin Users',
@@ -227,7 +248,9 @@ export default {
     usernamePlaceholder: 'Enter username',
     passPlaceholder: 'Enter password',
     emailPlaceholder: 'Enter email',
-    rolePlaceholder: 'Select role'
+    rolePlaceholder: 'Select role',
+    superAdminForced2FATitle: 'You are a super admin — please enable two-factor authentication now',
+    superAdminForced2FADesc: 'The server refuses any write action (create / edit / delete / batch) from a super_admin until 2FA is enabled. You can still view everything. Click the button to set it up.'
   },
   settings: {
     title: 'Settings',

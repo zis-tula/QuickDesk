@@ -142,14 +142,16 @@ func parseI18NJSON(raw string) interface{} {
 
 // PublicSettings implements GET /v1/settings/public — the whitelist of
 // site/branding fields safe for anonymous callers.
+//
+// Response uses snake_case per the v1 convention.
 func (h *PublicHandler) PublicSettings(c *gin.Context) {
 	s := h.settings.Get()
 	c.JSON(http.StatusOK, gin.H{
-		"siteEnabled": s.SiteEnabled,
-		"siteName":    s.SiteName,
-		"loginLogo":   s.LoginLogo,
-		"smallLogo":   s.SmallLogo,
-		"favicon":     s.Favicon,
+		"site_enabled": s.SiteEnabled,
+		"site_name":    s.SiteName,
+		"login_logo":   s.LoginLogo,
+		"small_logo":   s.SmallLogo,
+		"favicon":      s.Favicon,
 	})
 }
 

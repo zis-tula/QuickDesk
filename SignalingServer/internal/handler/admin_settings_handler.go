@@ -29,22 +29,22 @@ func (h *AdminSettingsHandler) Get(c *gin.Context) {
 }
 
 type adminSettingsPatch struct {
-	SiteEnabled        *bool   `json:"siteEnabled"`
-	SiteName           *string `json:"siteName"`
-	LoginLogo          *string `json:"loginLogo"`
-	SmallLogo          *string `json:"smallLogo"`
+	SiteEnabled        *bool   `json:"site_enabled"`
+	SiteName           *string `json:"site_name"`
+	LoginLogo          *string `json:"login_logo"`
+	SmallLogo          *string `json:"small_logo"`
 	Favicon            *string `json:"favicon"`
-	TurnURLs           *string `json:"turnUrls"`
-	TurnAuthSecret     *string `json:"turnAuthSecret"`
-	TurnCredentialTTL  *int    `json:"turnCredentialTtl"`
-	StunURLs           *string `json:"stunUrls"`
-	APIKey             *string `json:"apiKey"`
-	AllowedOrigins     *string `json:"allowedOrigins"`
-	AdminIPWhitelist   *string `json:"adminIpWhitelist"`
-	SmsAccessKeyID     *string `json:"smsAccessKeyId"`
-	SmsAccessKeySecret *string `json:"smsAccessKeySecret"`
-	SmsSignName        *string `json:"smsSignName"`
-	SmsTemplateCode    *string `json:"smsTemplateCode"`
+	TurnURLs           *string `json:"turn_urls"`
+	TurnAuthSecret     *string `json:"turn_auth_secret"`
+	TurnCredentialTTL  *int    `json:"turn_credential_ttl"`
+	StunURLs           *string `json:"stun_urls"`
+	APIKey             *string `json:"api_key"`
+	AllowedOrigins     *string `json:"allowed_origins"`
+	AdminIPWhitelist   *string `json:"admin_ip_whitelist"`
+	SmsAccessKeyID     *string `json:"sms_access_key_id"`
+	SmsAccessKeySecret *string `json:"sms_access_key_secret"`
+	SmsSignName        *string `json:"sms_sign_name"`
+	SmsTemplateCode    *string `json:"sms_template_code"`
 }
 
 // Update handles PUT /v1/admin/settings. Any change touching TURN/STUN

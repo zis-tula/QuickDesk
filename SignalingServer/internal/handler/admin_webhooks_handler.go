@@ -146,7 +146,7 @@ func (h *AdminWebhooksHandler) Delete(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
-// Test implements POST /v1/admin/webhooks/:id:test — sends a synthetic
+// Test implements POST /v1/admin/webhooks/:id/test — sends a synthetic
 // event to let operators verify the endpoint without waiting for a real
 // trigger.
 func (h *AdminWebhooksHandler) Test(c *gin.Context) {

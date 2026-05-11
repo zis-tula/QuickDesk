@@ -145,15 +145,21 @@
       </div>
 
       <div class="pagination-bar">
-        <el-pagination
-          v-model:current-page="activityPagination.page"
-          v-model:page-size="activityPagination.size"
-          :page-sizes="[20, 50, 100]"
+        <!-- §3.1 cursor-based pagination. See components/CursorPagination.vue.
+             Note: GET /v1/admin/activity (admin_stats_handler.go:97) only
+             consumes ?cursor=&limit= today — the activityFilters.deviceId/
+             status/dateRange are forwarded but the server ignores them.
+             They're kept in the UI so we don't lose the filter affordance
+             when the server adds support later. -->
+        <CursorPagination
+          :cursor-stack="activityPagination.cursorStack"
+          :next-cursor="activityPagination.nextCursor"
           :total="activityPagination.total"
-          layout="total, sizes, prev, pager, next, jumper"
-          size="small"
-          @size-change="loadActivity"
-          @current-change="loadActivity"
+          :limit="activityPagination.limit"
+          :loading="loading"
+          @prev="goPrevActivity"
+          @next="goNextActivity"
+          @update:limit="onActivityLimitChange"
         />
       </div>
     </el-card>
@@ -167,6 +173,7 @@ import { ElMessage } from 'element-plus'
 import { Monitor, Connection, Timer, Refresh, DataLine, Download } from '@element-plus/icons-vue'
 import { getStats, getSystemStatus, getConnectionStatus, getActivity, getTrends } from '../api/stats.js'
 import { exportCSV } from '../utils/export.js'
+import CursorPagination from '../components/CursorPagination.vue'
 import * as echarts from 'echarts'
 
 const { t } = useI18n()
@@ -212,57 +219,57 @@ const activityFilters = reactive({
 })
 
 const activityPagination = reactive({
-  page: 1,
-  size: 20,
-  total: 0
+  cursorStack: [''],
+  nextCursor: '',
+  total: 0,
+  limit: 20
 })
-
-function getDateRange(range) {
-  const now = new Date()
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  switch (range) {
-    case 'today':
-      return { dateFrom: today.toISOString(), dateTo: '' }
-    case '7days': {
-      const d = new Date(today)
-      d.setDate(d.getDate() - 7)
-      return { dateFrom: d.toISOString(), dateTo: '' }
-    }
-    case '30days': {
-      const d = new Date(today)
-      d.setDate(d.getDate() - 30)
-      return { dateFrom: d.toISOString(), dateTo: '' }
-    }
-    default:
-      return { dateFrom: '', dateTo: '' }
-  }
-}
 
 function rowClassName({ row }) {
   return row.status === 'success' ? 'success-row' : 'failed-row'
 }
 
 async function loadActivity() {
-  const { dateFrom, dateTo } = getDateRange(activityFilters.dateRange)
   try {
     const data = await getActivity({
-      page: activityPagination.page,
-      size: activityPagination.size,
-      deviceId: activityFilters.deviceId,
-      status: activityFilters.status,
-      dateFrom,
-      dateTo
+      cursor: activityPagination.cursorStack.at(-1),
+      limit: activityPagination.limit
     })
     activityList.value = data.items || data.activity || []
-    activityPagination.total = data.total || 0
+    activityPagination.nextCursor = data.next_cursor || ''
+    if (typeof data.total === 'number') activityPagination.total = data.total
   } catch (e) {
     ElMessage.error(t('dashboard.activityFailed') + ': ' + e.message)
   }
 }
 
-function handleActivityFilter() {
-  activityPagination.page = 1
+function resetActivityCursor() {
+  activityPagination.cursorStack = ['']
+  activityPagination.nextCursor = ''
   loadActivity()
+}
+
+function goPrevActivity() {
+  if (activityPagination.cursorStack.length <= 1) return
+  activityPagination.cursorStack.pop()
+  loadActivity()
+}
+
+function goNextActivity() {
+  if (!activityPagination.nextCursor) return
+  activityPagination.cursorStack.push(activityPagination.nextCursor)
+  loadActivity()
+}
+
+function onActivityLimitChange(n) {
+  activityPagination.limit = n
+  resetActivityCursor()
+}
+
+function handleActivityFilter() {
+  // Server-side filtering for activity is not implemented yet; reload to
+  // keep the UI deterministic when the user toggles filters.
+  resetActivityCursor()
 }
 
 async function loadStats() {
@@ -276,14 +283,22 @@ async function loadStats() {
     stats.value = statsData
     connectionStatus.value = connectionData
 
-    overview.value.totalDevices = statsData.totalDevices || 0
-    overview.value.totalConnections = connectionData.currentConnections || 0
-    overview.value.webSocketConnections = connectionData.webSocketConnections || 0
-    overview.value.apiRequests = connectionData.apiRequests || 0
+    // §2.2 /v1/admin/stats → { users_total, devices_total, devices_online,
+    //                          users_new_today, devices_new_today }
+    // /v1/admin/connections → { items:[...] }  (one row per active session)
+    overview.value.totalDevices       = statsData.devices_total      || 0
+    overview.value.totalConnections   = Array.isArray(connectionData.items)
+      ? connectionData.items.length
+      : 0
+    // The "webSocketConnections" / "apiRequests" labels below have no
+    // server-side counterpart today; leave them at 0 until the dashboard
+    // grows a real feed for those metrics.
+    overview.value.webSocketConnections = 0
+    overview.value.apiRequests          = 0
 
-    todaySummary.value.todayNewDevices = statsData.todayNewDevices || 0
-    todaySummary.value.todayConnections = statsData.todayConnections || 0
-    todaySummary.value.todayActiveUsers = statsData.todayActiveUsers || 0
+    todaySummary.value.todayNewDevices  = statsData.devices_new_today || 0
+    todaySummary.value.todayConnections = 0
+    todaySummary.value.todayActiveUsers = statsData.users_new_today   || 0
 
     ElMessage.success(t('dashboard.statsUpdated'))
   } catch (e) {

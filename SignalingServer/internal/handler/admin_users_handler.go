@@ -17,11 +17,12 @@ import (
 // AdminUsersHandler serves /v1/admin/users/* — CRUD over business users
 // plus the batch / session-revoke / device-count endpoints.
 type AdminUsersHandler struct {
-	users  *service.UserService
-	tokens *service.TokenService
-	bus    *service.EventBus
-	audit  *service.AuditService
-	db     *gorm.DB
+	users    *service.UserService
+	tokens   *service.TokenService
+	bus      *service.EventBus
+	audit    *service.AuditService
+	presence *service.PresenceService
+	db       *gorm.DB
 }
 
 func NewAdminUsersHandler(
@@ -29,13 +30,14 @@ func NewAdminUsersHandler(
 	tokens *service.TokenService,
 	bus *service.EventBus,
 	audit *service.AuditService,
+	presence *service.PresenceService,
 	db *gorm.DB,
 ) *AdminUsersHandler {
-	return &AdminUsersHandler{users: users, tokens: tokens, bus: bus, audit: audit, db: db}
+	return &AdminUsersHandler{users: users, tokens: tokens, bus: bus, audit: audit, presence: presence, db: db}
 }
 
 // List handles GET /v1/admin/users with cursor-based pagination (§3.1).
-// Supported filters: search, level, status, channelType.
+// Supported filters: search, level, status, channel_type.
 func (h *AdminUsersHandler) List(c *gin.Context) {
 	p := ParseCursor(c)
 	allowedSorts := map[string]bool{
@@ -67,7 +69,7 @@ func (h *AdminUsersHandler) List(c *gin.Context) {
 		Search:      p.Search,
 		Level:       c.Query("level"),
 		Status:      statusFilter,
-		ChannelType: c.Query("channelType"),
+		ChannelType: c.Query("channel_type"),
 	})
 	if err != nil {
 		ProblemInternal(c, err.Error())
@@ -99,6 +101,13 @@ func (h *AdminUsersHandler) Get(c *gin.Context) {
 
 // GetDetails bundles the user profile with their active devices +
 // sessions + recent connection history (§2.2 admin users/:id/details).
+//
+// `devices` is enriched: we join UserDevice (binding metadata: remark,
+// first_bound_at, last_connect_at, connect_count) with Device (hardware
+// metadata: device_uuid, os, os_version, app_version, device_name,
+// access_code, last_seen_at) and presence (online, logged_in derived).
+// The admin web's UserDetailPage table reads device_uuid / os / online /
+// last_seen_at from this enriched shape.
 func (h *AdminUsersHandler) GetDetails(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
@@ -114,6 +123,51 @@ func (h *AdminUsersHandler) GetDetails(c *gin.Context) {
 	h.db.WithContext(c.Request.Context()).
 		Where("user_id = ? AND status = ?", u.ID, true).
 		Find(&userDevices)
+
+	// Enrich each binding with the live Device row + presence.
+	deviceIDs := make([]string, 0, len(userDevices))
+	for _, ud := range userDevices {
+		deviceIDs = append(deviceIDs, ud.DeviceID)
+	}
+	devicesByID := map[string]*models.Device{}
+	if len(deviceIDs) > 0 {
+		var devs []models.Device
+		h.db.WithContext(c.Request.Context()).
+			Where("device_id IN ?", deviceIDs).
+			Find(&devs)
+		for i := range devs {
+			devicesByID[devs[i].DeviceID] = &devs[i]
+		}
+	}
+	online := map[string]bool{}
+	if h.presence != nil && len(deviceIDs) > 0 {
+		online = h.presence.BulkOnline(c.Request.Context(), deviceIDs)
+	}
+	enrichedDevices := make([]gin.H, 0, len(userDevices))
+	for _, ud := range userDevices {
+		row := gin.H{
+			"device_id":        ud.DeviceID,
+			"remark":           ud.Remark,
+			"first_bound_at":   ud.FirstBoundAt,
+			"last_connect_at":  ud.LastConnectAt,
+			"connect_count":    ud.ConnectCount,
+			"status":           ud.Status,
+		}
+		if d := devicesByID[ud.DeviceID]; d != nil {
+			row["device_uuid"]  = d.DeviceUUID
+			row["device_name"] = d.DeviceName
+			row["os"]           = d.OS
+			row["os_version"]   = d.OSVersion
+			row["app_version"]  = d.AppVersion
+			row["access_code"]  = d.AccessCode
+			row["last_seen_at"] = d.LastSeenAt
+			isOnline := online[d.DeviceID]
+			row["online"]       = isOnline
+			row["logged_in"]    = d.LoggedIn && isOnline
+		}
+		enrichedDevices = append(enrichedDevices, row)
+	}
+
 	var history []models.ConnectionHistory
 	h.db.WithContext(c.Request.Context()).
 		Where("user_id = ?", u.ID).
@@ -138,7 +192,7 @@ func (h *AdminUsersHandler) GetDetails(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"user":               u,
-		"devices":            userDevices,
+		"devices":            enrichedDevices,
 		"sessions":           sessions,
 		"connection_history": history,
 	})
@@ -151,7 +205,7 @@ type adminCreateUserReq struct {
 	Email       string `json:"email"`
 	Password    string `json:"password" binding:"required"`
 	Level       string `json:"level"`
-	ChannelType string `json:"channelType"`
+	ChannelType string `json:"channel_type"`
 }
 
 func (h *AdminUsersHandler) Create(c *gin.Context) {
@@ -192,8 +246,8 @@ type adminPatchUserReq struct {
 	Email       *string `json:"email"`
 	Password    *string `json:"password"`
 	Level       *string `json:"level"`
-	DeviceCount *int    `json:"deviceCount"`
-	ChannelType *string `json:"channelType"`
+	DeviceCount *int    `json:"device_count"`
+	ChannelType *string `json:"channel_type"`
 	Status      *bool   `json:"status"`
 }
 
@@ -315,7 +369,7 @@ func (h *AdminUsersHandler) PatchDeviceCount(c *gin.Context) {
 		return
 	}
 	var req struct {
-		DeviceCount int `json:"deviceCount"`
+		DeviceCount int `json:"device_count"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		ProblemBadRequest(c, ProblemCodeInvalidRequest, err.Error())

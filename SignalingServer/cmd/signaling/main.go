@@ -144,7 +144,7 @@ func main() {
 	adminAuthHandler := handler.NewAdminAuthHandler(adminUserService, tokenService, auditService)
 	adminTOTPHandler := handler.NewAdminTOTPHandler(adminUserService, db)
 	adminAdminsHandler := handler.NewAdminAdminsHandler(adminUserService, tokenService, auditService)
-	adminUsersHandler := handler.NewAdminUsersHandler(userService, tokenService, bus, auditService, db)
+	adminUsersHandler := handler.NewAdminUsersHandler(userService, tokenService, bus, auditService, presenceService, db)
 	adminDevicesHandler := handler.NewAdminDevicesHandler(deviceService, presenceService, bus, auditService, db)
 	adminSettingsHandler := handler.NewAdminSettingsHandler(settingsService, bus, auditService)
 	adminPresetHandler := handler.NewAdminPresetHandler(presetService, auditService)
@@ -349,7 +349,14 @@ func main() {
 			adminGuarded.GET("/webhooks/:id", adminWebhooksHandler.Get)
 			adminGuarded.PATCH("/webhooks/:id", adminWebhooksHandler.Patch)
 			adminGuarded.DELETE("/webhooks/:id", adminWebhooksHandler.Delete)
-			adminGuarded.POST("/webhooks/:id:test", adminWebhooksHandler.Test)
+			// §2.2: webhook delivery test. We avoid the AIP-136
+			// "{name}:test" custom-method form here because gin's
+			// httprouter cannot register a literal suffix on a
+			// wildcard segment ("only one wildcard per path segment is
+			// allowed"). Treating the test delivery as a sub-resource
+			// is RESTful, gin-friendly and clients still POST against
+			// /webhooks/:id/test which reads naturally.
+			adminGuarded.POST("/webhooks/:id/test", adminWebhooksHandler.Test)
 
 			// Device groups.
 			adminGuarded.GET("/groups", adminGroupsHandler.List)
