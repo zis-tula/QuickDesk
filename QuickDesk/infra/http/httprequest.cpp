@@ -73,6 +73,25 @@ void HttpRequest::sendPutRequest(const QUrl& url, const QList<QPair<QString, QSt
     m_tasks[taskKey] = callback;
 }
 
+void HttpRequest::sendPatchRequest(const QUrl& url, const QList<QPair<QString, QString>>& headers, const QString& data, int timeout, HttpRequestCallback callback)
+{
+    QNetworkRequest request;
+    request.setUrl(url);
+    request.setTransferTimeout(timeout);
+    for (auto it = headers.constBegin(); it != headers.constEnd(); ++it) {
+        request.setRawHeader(it->first.toUtf8(), it->second.toUtf8());
+    }
+
+    configRequest(request);
+
+    QByteArray byte = data.toUtf8();
+    request.setHeader(QNetworkRequest::ContentLengthHeader, byte.size());
+    QNetworkReply* reply = m_networkAccessManager->sendCustomRequest(request, "PATCH", byte);
+    auto taskKey = reinterpret_cast<quintptr>(reply);
+    LOG_DEBUG("[http] start patch:{}", taskKey);
+    m_tasks[taskKey] = callback;
+}
+
 void HttpRequest::sendDeleteRequest(const QUrl& url, const QList<QPair<QString, QString>>& headers, int timeout, HttpRequestCallback callback)
 {
     QNetworkRequest request;

@@ -78,6 +78,21 @@ ApplicationWindow {
         }
     }
 
+    // §2.25 — surface native-messaging protocol mismatch to the user so
+    // they know to upgrade. Fires once per helloResponse when the host's
+    // protocol_version disagrees with Qt's (currently 2).
+    Connections {
+        target: mainController ? mainController.hostManager : null
+        enabled: mainController != null && mainController.hostManager != null
+
+        function onNativeMessagingProtocolMismatch(hostVersion, qtVersion) {
+            console.warn("Native-messaging protocol mismatch: host=" + hostVersion
+                         + " qt=" + qtVersion)
+            toast.show(qsTr("Host version mismatch — please upgrade QuickDesk."),
+                       QDToast.Type.Warning)
+        }
+    }
+
     // Listen to connection state changes to save device credentials
     Connections {
         target: mainController.clientManager
