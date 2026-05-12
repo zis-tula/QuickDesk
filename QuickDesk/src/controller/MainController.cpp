@@ -363,12 +363,46 @@ QString MainController::connectToRemoteHost(const QString& deviceId,
 {
     QString url = serverUrl.isEmpty() ? getDefaultServerUrl() : serverUrl;
     LOG_INFO("Connecting to remote host: {} on {}", deviceId.toStdString(), url.toStdString());
-    QString result = m_clientManager->connectToHost(deviceId, accessCode, url);
 
-    if (!result.isEmpty()) {
-        m_connectionTracks[deviceId] = { QDateTime::currentMSecsSinceEpoch() };
-    }
-    return result;
+    // §2.6: the Chromium client process needs a one-shot signal_token
+    // for the WS first-frame auth. Qt verifies the access_code against
+    // the signaling server via POST /v1/devices/:id/access-code:verify
+    // *before* spawning the native-messaging connectToHost request.
+    // This replaces the legacy /api/v1/auth/verify round-trip that the
+    // Chromium client used to perform itself (now deleted).
+    m_connectionTracks[deviceId] = { QDateTime::currentMSecsSinceEpoch() };
+    m_cloudDeviceManager->verifyAccessCode(
+        deviceId, accessCode,
+        [this, deviceId, accessCode, url](const QString& signalToken) {
+            LOG_INFO("verifyAccessCode OK for device={} — spawning client",
+                     deviceId.toStdString());
+            QString result = m_clientManager->connectToHost(
+                deviceId, accessCode, signalToken, url);
+            if (result.isEmpty()) {
+                // ClientManager already emitted errorOccurred.
+                m_connectionTracks.remove(deviceId);
+            }
+        },
+        [this, deviceId](int httpStatus, const QString& code,
+                         const QString& detail) {
+            LOG_WARN("verifyAccessCode FAILED device={} status={} code={} "
+                     "detail={}",
+                     deviceId.toStdString(), httpStatus,
+                     code.toStdString(), detail.toStdString());
+            m_connectionTracks.remove(deviceId);
+            // Forward as a ClientManager error. verifyAccessCode failures
+            // share the same UX path as "client spawn failed" — the QML
+            // already listens on ClientManager::errorOccurred.
+            Q_EMIT m_clientManager->errorOccurred(
+                deviceId,
+                code.isEmpty() ? QStringLiteral("VERIFY_FAILED") : code,
+                detail);
+        });
+
+    // Return the device_id as the tentative connection_id (same as before
+    // — it was just an echo of ClientManager's generated id, and
+    // ClientManager reuses deviceId when it re-keys the connection).
+    return deviceId;
 }
 
 void MainController::disconnectFromRemoteHost(const QString& deviceId)

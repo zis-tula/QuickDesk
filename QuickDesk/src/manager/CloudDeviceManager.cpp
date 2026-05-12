@@ -250,6 +250,81 @@ void CloudDeviceManager::syncAccessCode(const QString& deviceId, const QString& 
         });
 }
 
+// §2.6: POST /v1/devices/:device_id/access-code:verify.
+// Auth path here is X-API-Key (via publicHeaders), NOT device_secret:
+// any Qt instance can mint a client-side signal_token for any host
+// whose access_code it knows — mirrors the WebClient flow.
+void CloudDeviceManager::verifyAccessCode(
+    const QString& deviceId,
+    const QString& accessCode,
+    std::function<void(const QString& signalToken)> onSuccess,
+    std::function<void(int, const QString&, const QString&)> onError) {
+    if (deviceId.isEmpty() || accessCode.isEmpty()) {
+        if (onError) onError(0, QStringLiteral("INVALID_ARGUMENT"),
+                             QStringLiteral("deviceId / accessCode empty"));
+        return;
+    }
+
+    QUrl url(httpBaseUrl() + "v1/devices/" + deviceId +
+             "/access-code:verify");
+
+    QList<QPair<QString, QString>> headers;
+    // publicHeaders gives us X-API-Key (runtime override > compile-time).
+    if (m_authManager) {
+        for (const auto& h : m_authManager->publicHeaders()) {
+            headers.append(h);
+        }
+    }
+    headers.append(qMakePair(QStringLiteral("Content-Type"),
+                              QStringLiteral("application/json")));
+
+    QJsonObject body;
+    body["code"] = accessCode;
+    QString bodyData =
+        QString::fromUtf8(QJsonDocument(body).toJson(QJsonDocument::Compact));
+
+    LOG_INFO("[CloudDeviceManager] verifyAccessCode device={} (X-API-Key)",
+             deviceId.toStdString());
+
+    infra::HttpRequest::instance().sendPostRequest(
+        url, headers, bodyData, kRequestTimeoutMs,
+        [this, deviceId, onSuccess = std::move(onSuccess),
+         onError = std::move(onError)](int statusCode,
+                                        const std::string& errorMsg,
+                                        const std::string& data) {
+            QMetaObject::invokeMethod(
+                this, [=, onSuccess = std::move(onSuccess),
+                       onError = std::move(onError)]() mutable {
+                    QJsonDocument doc = QJsonDocument::fromJson(
+                        QByteArray::fromStdString(data));
+                    QJsonObject obj = doc.object();
+                    if (statusCode == 200 && errorMsg.empty()) {
+                        QString token = obj.value("signal_token").toString();
+                        if (token.isEmpty()) {
+                            if (onError) {
+                                onError(statusCode,
+                                        QStringLiteral("INVALID_RESPONSE"),
+                                        QStringLiteral(
+                                            "server returned no signal_token"));
+                            }
+                            return;
+                        }
+                        if (onSuccess) onSuccess(token);
+                        return;
+                    }
+                    // RFC 7807 problem+json: {code, title, detail, status}.
+                    QString code = obj.value("code").toString();
+                    QString detail = obj.value("detail").toString();
+                    if (detail.isEmpty()) detail = QString::fromStdString(errorMsg);
+                    LOG_WARN("[CloudDeviceManager] verifyAccessCode failed: "
+                             "status={} code={} detail={}",
+                             statusCode, code.toStdString(),
+                             detail.toStdString());
+                    if (onError) onError(statusCode, code, detail);
+                });
+        });
+}
+
 QString CloudDeviceManager::getDeviceAccessCode(const QString& deviceId) const
 {
     for (const auto& v : m_myDevices) {

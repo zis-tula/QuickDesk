@@ -2,6 +2,8 @@
 #ifndef QUICKDESK_MANAGER_CLOUDDEVICEMANAGER_H
 #define QUICKDESK_MANAGER_CLOUDDEVICEMANAGER_H
 
+#include <functional>
+
 #include <QObject>
 #include <QString>
 #include <QVariantList>
@@ -57,6 +59,24 @@ public:
     // Host delivers device_secret through native-messaging at hostReady;
     // CloudDeviceManager keeps the value in memory only (HostManager owns it).
     Q_INVOKABLE void syncAccessCode(const QString& deviceId, const QString& accessCode);
+
+    // §2.6: verify access_code and mint a one-shot signaling token for
+    // the client process. POST /v1/devices/:id/access-code:verify;
+    // on HTTP 200 invokes |onSuccess(signalToken)|, on any failure
+    // invokes |onError(httpStatus, code, detail)|. Both callbacks are
+    // posted back to this object's thread so callers may update Qt UI
+    // state without extra marshalling.
+    //
+    // Auth: this endpoint accepts X-API-Key OR an Origin-whitelisted
+    // caller (§2.2 H1). Qt always attaches X-API-Key via
+    // AuthManager::publicHeaders so user login state is irrelevant.
+    void verifyAccessCode(
+        const QString& deviceId,
+        const QString& accessCode,
+        std::function<void(const QString& signalToken)> onSuccess,
+        std::function<void(int httpStatus,
+                            const QString& code,
+                            const QString& detail)> onError);
 
     Q_INVOKABLE QString getDeviceAccessCode(const QString& deviceId) const;
     Q_INVOKABLE QString getDeviceDisplayName(const QString& deviceId) const;
