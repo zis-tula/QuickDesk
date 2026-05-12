@@ -220,6 +220,13 @@ type iceServerJSON struct {
 type iceConfigResp struct {
 	IceServers        []iceServerJSON `json:"ice_servers"`
 	TurnConfigVersion int64           `json:"turn_config_version"`
+	// LifetimeDuration is the Google-TURN-compatible freshness hint
+	// (e.g. "86400s"). Required for remoting's protocol::IceConfig::Parse
+	// to compute a sensible expiration_time — without it, Chromium logs
+	// an error on every fetch and marks the config immediately expired,
+	// causing the transport to refetch before every new connection. The
+	// Qt / WebClient layers ignore this field today. (R16)
+	LifetimeDuration string `json:"lifetime_duration"`
 }
 
 // GetICEConfig generates TURN credentials against the coturn shared secret
@@ -243,9 +250,17 @@ func (h *HostHandler) GetICEConfig(c *gin.Context) {
 			Credential: cred,
 		})
 	}
+	// Freshness hint. Mirror coturn's TTL (default 86400 when unset) so
+	// IceConfig::is_expired() doesn't flip true until the TURN creds
+	// actually rotate out.
+	ttl := s.TurnCredentialTTL
+	if ttl <= 0 {
+		ttl = 86400
+	}
 	c.JSON(http.StatusOK, iceConfigResp{
 		IceServers:        servers,
 		TurnConfigVersion: s.TurnConfigVersion,
+		LifetimeDuration:  fmt.Sprintf("%ds", ttl),
 	})
 }
 
@@ -325,11 +340,15 @@ func (h *HostHandler) VerifyAccessCode(c *gin.Context) {
 		ProblemNotFound(c, ProblemCodeDeviceNotFound, "Device not registered")
 		return
 	}
-	if !h.presence.IsOnline(c.Request.Context(), deviceID) {
-		// Conflict per §2.2 / scenario 37.
-		ProblemConflict(c, ProblemCodeHostOffline, "Host is offline")
-		return
-	}
+	// IMPORTANT ordering (R5 fix):
+	//   1. wrong code  → count failure + INVALID_CODE / TOO_MANY_ATTEMPTS
+	//   2. right code + host offline → HOST_OFFLINE (don't count as failure)
+	//   3. right code + host online  → mint signal_token
+	// Checking online-ness BEFORE code-match would let an attacker
+	// enumerate access_codes against an offline device without ever
+	// tripping the per-device failure counter (§2.10). Keep the code
+	// comparison first so rate limiting engages consistently regardless
+	// of host presence.
 	if !matches {
 		if failure, _ := h.rateLimit.RecordVerifyFailure(c.Request.Context(), deviceID, ip); failure.TripsLimit {
 			// Tripped a per-device error counter (not the per-IP total
@@ -341,6 +360,15 @@ func (h *HostHandler) VerifyAccessCode(c *gin.Context) {
 			return
 		}
 		ProblemForbidden(c, ProblemCodeInvalidCode, "Access code is incorrect")
+		return
+	}
+	if !h.presence.IsOnline(c.Request.Context(), deviceID) {
+		// Conflict per §2.2 / scenario 37. Successful code match resets
+		// the per-(device,ip) failure counter — this is a legitimate
+		// caller who just happens to have arrived while the host is
+		// offline.
+		h.rateLimit.ResetVerifyFailures(c.Request.Context(), deviceID, ip)
+		ProblemConflict(c, ProblemCodeHostOffline, "Host is offline")
 		return
 	}
 

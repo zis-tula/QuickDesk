@@ -230,6 +230,19 @@ func (h *AuthHandler) ConfirmPasswordReset(c *gin.Context) {
 		writeUserErrorProblem(c, err)
 		return
 	}
+	// §2.2 / R32: password changes must revoke every existing session,
+	// otherwise a device that still holds the user's pre-reset refresh
+	// token can silently mint a new access_token. Look up the user so
+	// we can target the reverse-family index, then publish
+	// session.revoked to kick any connected events WebSocket.
+	if u, err := h.users.GetByPhone(c.Request.Context(), req.Phone); err == nil && u != nil {
+		h.tokens.RevokeAllForSubject(c.Request.Context(), service.ScopeUser, u.ID)
+		h.bus.Publish(c.Request.Context(), service.Event{
+			Type:   service.EventSessionRevoked,
+			UserID: u.ID,
+			Data:   map[string]interface{}{"reason": "password_reset"},
+		})
+	}
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 

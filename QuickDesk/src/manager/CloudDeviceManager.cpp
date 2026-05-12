@@ -212,6 +212,18 @@ void CloudDeviceManager::syncAccessCode(const QString& deviceId, const QString& 
         return;
     }
 
+    // R28: MainController wires THREE host-side signals
+    // (hostReady / accessCodeChanged / deviceSecretReady) to this
+    // method; they all fire within a few ms when the host finishes
+    // starting up. Suppress duplicate uploads of the exact same
+    // (device_id, access_code) pair so we don't PUT 3× and publish 3
+    // `device.access_code.changed` events in succession.
+    if (deviceId == m_lastSyncedDeviceId && accessCode == m_lastSyncedAccessCode) {
+        LOG_INFO("[CloudDeviceManager] syncAccessCode skipped (already up-to-date) for device={}",
+                 deviceId.toStdString());
+        return;
+    }
+
     QUrl url(httpBaseUrl() + "v1/devices/" + deviceId + "/access-code");
     auto headers = deviceSecretHeaders();
 
@@ -234,6 +246,11 @@ void CloudDeviceManager::syncAccessCode(const QString& deviceId, const QString& 
                 }
                 LOG_INFO("[CloudDeviceManager] Access code synced for device: {}",
                          deviceId.toStdString());
+                // R28: remember what we successfully pushed so the next
+                // MainController signal with the same (deviceId, code)
+                // short-circuits in syncAccessCode().
+                m_lastSyncedDeviceId = deviceId;
+                m_lastSyncedAccessCode = accessCode;
                 // Local cache patch (realtime will confirm via
                 // device.access_code.changed event — which does NOT
                 // include the plaintext code; that's why we patch locally).

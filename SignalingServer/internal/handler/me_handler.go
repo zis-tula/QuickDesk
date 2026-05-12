@@ -54,10 +54,13 @@ func (h *MeHandler) ChangePassword(c *gin.Context) {
 		writeUserErrorProblem(c, err)
 		return
 	}
-	// Revoke the current access token so the client must re-login.
-	if at := middleware.CurrentAccessToken(c); at != "" {
-		_ = h.tokens.RevokeAccessToken(c.Request.Context(), service.ScopeUser, at)
-	}
+	// §2.2: "改密码后全部 session revoke". Revoking only the current
+	// access_token leaves refresh tokens alive on every other device;
+	// the next refresh round would silently hand the caller a new
+	// session. Kill every family belonging to this user so other
+	// devices must log in again with the new password (R32). The bus
+	// event below fans out to all connected events WebSockets too.
+	h.tokens.RevokeAllForSubject(c.Request.Context(), service.ScopeUser, uid)
 	h.bus.Publish(c.Request.Context(), service.Event{
 		Type:   service.EventSessionRevoked,
 		UserID: uid,

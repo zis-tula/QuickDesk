@@ -139,6 +139,16 @@ private:
     QVariantList m_myDevices;
     QVariantList m_myFavorites;
     QVariantList m_connectionLogs;
+
+    // De-dup guard for syncAccessCode (R28): three MainController
+    // listeners (hostReady / accessCodeChanged / deviceSecretReady) can
+    // each fire within the same host-ready burst, each asking us to
+    // upload the *same* code. Remember what we last pushed for this
+    // device so we don't PUT 3× in a row — the second/third call is a
+    // no-op which also suppresses the duplicate
+    // `device.access_code.changed` realtime event.
+    QString m_lastSyncedDeviceId;
+    QString m_lastSyncedAccessCode;
 };
 
 } // namespace quickdesk

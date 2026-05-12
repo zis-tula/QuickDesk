@@ -518,7 +518,14 @@ func (h *RealtimeHandler) HandleSignal(c *gin.Context) {
 		conn:     conn,
 		role:     payload.Role,
 		deviceID: payload.DeviceID,
-		clientID: payload.ClientID,
+		// R7: prefer the client_id declared by the caller in the auth
+		// frame (matches §2.26 "client_id 在首帧 auth 时声明"). Fall
+		// back to whatever the token was minted with (Qt today doesn't
+		// forward client_id to verify, so payload.ClientID is usually
+		// empty), and as a last resort assign a server-side UUID so we
+		// never have "" as a map key. For host role the field is
+		// ignored anyway.
+		clientID: firstNonEmpty(af.ClientID, payload.ClientID),
 		out:      make(chan []byte, 64),
 		done:     make(chan struct{}),
 	}
@@ -745,6 +752,18 @@ func writeSignalError(conn *websocket.Conn, code, detail string) {
 func mustMarshal(v interface{}) []byte {
 	b, _ := json.Marshal(v)
 	return b
+}
+
+// firstNonEmpty returns the first non-empty string from its arguments,
+// or "" if all are empty. Used by HandleSignal to pick the best
+// client_id candidate (auth frame > token payload).
+func firstNonEmpty(candidates ...string) string {
+	for _, s := range candidates {
+		if s != "" {
+			return s
+		}
+	}
+	return ""
 }
 
 // injectClientID parses the JSON payload, ensures a client_id field exists
