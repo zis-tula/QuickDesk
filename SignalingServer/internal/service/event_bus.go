@@ -131,7 +131,10 @@ func (b *EventBus) Publish(ctx context.Context, evt Event) {
 				log.Printf("[EventBus] XADD %s failed: %v", streamKey, cmd.Err())
 				streamOK = false
 			} else {
-				b.rdb.Expire(ctx, streamKey, b.stream)
+				// Use a generous TTL (1 hour) so idle users still have
+				// replay data after brief disconnects. MAXLEN~1000 handles
+				// active-user trimming; TTL handles abandoned streams.
+				b.rdb.Expire(ctx, streamKey, 1*time.Hour)
 			}
 		}
 	}
@@ -284,9 +287,12 @@ func (b *EventBus) EventsSinceRev(ctx context.Context, userID uint, sinceRev int
 			out = append(out, evt)
 		}
 	}
-	// Stream non-empty AND its oldest entry is *newer* than the
-	// caller's checkpoint → the (sinceRev, oldestRev] gap was trimmed.
-	truncated := oldestRev > 0 && oldestRev > sinceRev+1
+	// Truncation detection:
+	// 1. Stream non-empty AND oldest entry newer than checkpoint → gap trimmed.
+	// 2. Stream empty (expired/deleted) AND client has a non-zero checkpoint
+	//    → all events were lost, client needs a full snapshot.
+	truncated := (oldestRev > 0 && oldestRev > sinceRev+1) ||
+		(len(res) == 0 && sinceRev > 0)
 	return ResumeResult{Events: out, Truncated: truncated}, nil
 }
 

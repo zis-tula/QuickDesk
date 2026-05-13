@@ -121,10 +121,10 @@ func (p *PresenceService) BulkOnline(ctx context.Context, deviceIDs []string) ma
 			out[id] = false
 			continue
 		}
-		// Need at least one ws key.
-		iter := p.rdb.Scan(ctx, 0, p.wsPattern(id), 1).Iterator()
-		hasWS := iter.Next(ctx)
-		out[id] = hb && hasWS
+		// Need at least one ws key. The pattern is narrow (one device),
+		// so Keys is safe and avoids SCAN's count-hint unreliability.
+		keys, _ := p.rdb.Keys(ctx, p.wsPattern(id)).Result()
+		out[id] = hb && len(keys) > 0
 	}
 	return out
 }

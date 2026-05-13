@@ -83,18 +83,17 @@ func (s *RateLimitService) CheckVerifyFailure(ctx context.Context, deviceID, ip 
 	_, _, _ = s.incrWindow(ctx, fmt.Sprintf("qd:ratelimit:verify:%s", deviceID), verifyWindow)
 }
 
-// incrWindow atomically INCR + EXPIRE a counter using a Redis pipeline.
-// Returns (value, ttl) after the increment.
+// incrWindow atomically INCR a counter and sets TTL only on first hit
+// (when INCR returns 1), preventing the window from being extended on
+// subsequent requests. Returns (value, ttl) after the increment.
 func (s *RateLimitService) incrWindow(ctx context.Context, key string, ttl time.Duration) (int64, time.Duration, error) {
-	pipe := s.rdb.Pipeline()
-	inc := pipe.Incr(ctx, key)
-	// Only set TTL when we're creating the key (first hit) to avoid
-	// continuously refreshing and extending the window.
-	pipe.Expire(ctx, key, ttl)
-	if _, err := pipe.Exec(ctx); err != nil {
+	val, err := s.rdb.Incr(ctx, key).Result()
+	if err != nil {
 		return 0, 0, err
 	}
-	val := inc.Val()
+	if val == 1 {
+		s.rdb.Expire(ctx, key, ttl)
+	}
 	remaining, _ := s.rdb.TTL(ctx, key).Result()
 	if remaining <= 0 {
 		remaining = ttl

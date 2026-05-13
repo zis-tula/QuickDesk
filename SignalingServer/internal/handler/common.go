@@ -23,11 +23,11 @@ func userJSON(u *models.User) gin.H {
 		"phone":        u.Phone,
 		"email":        u.Email,
 		"level":        u.Level,
-		"deviceCount":  u.DeviceCount,
-		"channelType":  u.ChannelType,
+		"device_count": u.DeviceCount,
+		"channel_type": u.ChannelType,
 		"status":       u.Status,
-		"createdAt":    u.CreatedAt,
-		"updatedAt":    u.UpdatedAt,
+		"created_at":   u.CreatedAt,
+		"updated_at":   u.UpdatedAt,
 	}
 }
 

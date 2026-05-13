@@ -51,7 +51,7 @@
           <label>{{ $t('user.smsCode') }}</label>
           <div class="input-row">
             <input v-model="smsCode" class="form-input" type="text" />
-            <button class="btn btn-secondary" :disabled="smsCountdown > 0 || !phone" @click="sendSms('reset_password')">
+            <button class="btn btn-secondary" :disabled="smsCountdown > 0 || !phone" @click="sendSms('register')">
               {{ smsCountdown > 0 ? `${smsCountdown}s` : $t('user.sendCode') }}
             </button>
           </div>
@@ -86,7 +86,7 @@
             <label>{{ $t('user.phone') }}</label>
             <div class="input-row">
               <input v-model="phone" class="form-input" type="text" />
-              <button class="btn btn-secondary" :disabled="smsCountdown > 0 || !phone" @click="sendSms('reset-password')">
+              <button class="btn btn-secondary" :disabled="smsCountdown > 0 || !phone" @click="sendSms('reset_password')">
                 {{ smsCountdown > 0 ? `${smsCountdown}s` : $t('user.sendCode') }}
               </button>
             </div>

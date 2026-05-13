@@ -569,9 +569,9 @@ func (h *RealtimeHandler) HandleSignal(c *gin.Context) {
 	sc.reader()
 }
 
-// registerSignalConn places sc into the topology maps. Returns an error
-// if a host slot is already taken 鈥?the existing host keeps the slot, new
-// ones are rejected so two runaway processes can't trample each other.
+// registerSignalConn places sc into the topology maps. For host role,
+// latest connection wins: the existing host WS is closed and replaced,
+// so a reconnecting host process always succeeds.
 func (h *RealtimeHandler) registerSignalConn(sc *signalConn) error {
 	h.signalMu.Lock()
 	defer h.signalMu.Unlock()

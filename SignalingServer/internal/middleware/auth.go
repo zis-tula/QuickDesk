@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
@@ -53,8 +54,9 @@ func (a *UserAuth) Required() gin.HandlerFunc {
 		c.Set(ctxKeyFamilyID, family)
 		// Bump LastSeen on the session family so /v1/me/sessions stays
 		// fresh. Fire-and-forget; no point in failing the request on a
-		// Redis hiccup.
-		go a.tokens.TouchSession(c.Request.Context(), service.ScopeUser, family)
+		// Redis hiccup. Use background context because the request context
+		// is cancelled after the handler returns.
+		go a.tokens.TouchSession(context.Background(), service.ScopeUser, family)
 		c.Next()
 	}
 }
@@ -122,7 +124,7 @@ func (a *AdminAuth) Required() gin.HandlerFunc {
 		c.Set(ctxKeyAdminID, aid)
 		c.Set(ctxKeyAccessTk, token)
 		c.Set(ctxKeyFamilyID, family)
-		go a.tokens.TouchSession(c.Request.Context(), service.ScopeAdmin, family)
+		go a.tokens.TouchSession(context.Background(), service.ScopeAdmin, family)
 		c.Next()
 	}
 }
