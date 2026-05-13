@@ -475,7 +475,16 @@ func (h *RealtimeHandler) HandleSignal(c *gin.Context) {
 		return
 	}
 
-	payload, err := h.tokens.ConsumeSignalToken(c.Request.Context(), af.SignalToken)
+	// Host tokens are consumed (one-time) since host always mints fresh.
+	// Client tokens are validated-and-extended so the Chromium client can
+	// reconnect after a brief network disruption without needing Qt to
+	// re-verify the access code.
+	var payload service.SignalTokenPayload
+	if af.Role == "host" {
+		payload, err = h.tokens.ConsumeSignalToken(c.Request.Context(), af.SignalToken)
+	} else {
+		payload, err = h.tokens.ValidateAndExtendSignalToken(c.Request.Context(), af.SignalToken)
+	}
 	if err != nil {
 		writeSignalError(conn, "AUTH_INVALID", "signal_token invalid or expired")
 		_ = conn.Close()

@@ -466,7 +466,7 @@ export class Session extends EventTarget {
         this._emitEvent('jsonMessage', json);
 
         if (json.type !== 'error') return;
-        const code = (json.data && json.data.code) || '';
+        const code = json.code || (json.data && json.data.code) || '';
         this._log(`Signaling error: ${code}`, 'error');
         // These codes all map to "the session cannot continue" — flip
         // to FAILED so remote-main.js records the connection result

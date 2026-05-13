@@ -146,7 +146,7 @@ export class WebSocketTransport {
                     return;
                 }
                 if (json.type === 'error') {
-                    const code = (json.data && json.data.code) || '';
+                    const code = json.code || (json.data && json.data.code) || '';
                     console.warn(`[WebSocket] server error code=${code}`);
                     // Surface to session as a message for state-machine logic
                     // (PEER_DISCONNECTED / HOST_OFFLINE etc. — §2.15).

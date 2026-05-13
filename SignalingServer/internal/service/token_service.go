@@ -509,6 +509,32 @@ func (t *TokenService) ConsumeSignalToken(ctx context.Context, token string) (Si
 	return p, nil
 }
 
+// ClientSignalSessionTTL is how long a client signal_token remains valid
+// after first successful auth, allowing reconnection within this window.
+const ClientSignalSessionTTL = 10 * time.Minute
+
+// ValidateAndExtendSignalToken reads a signal token WITHOUT deleting it,
+// and extends its TTL for client reconnection. Used for client-role tokens
+// so the Chromium client can reconnect after a brief network disruption
+// without needing a fresh token from Qt.
+func (t *TokenService) ValidateAndExtendSignalToken(ctx context.Context, token string) (SignalTokenPayload, error) {
+	key := t.signalKey(token)
+	val, err := t.rdb.Get(ctx, key).Result()
+	if err != nil {
+		if err == redis.Nil {
+			return SignalTokenPayload{}, ErrTokenNotFound
+		}
+		return SignalTokenPayload{}, err
+	}
+	var p SignalTokenPayload
+	if err := json.Unmarshal([]byte(val), &p); err != nil {
+		return SignalTokenPayload{}, ErrTokenNotFound
+	}
+	// Extend TTL so the client can reconnect within the session window.
+	t.rdb.Expire(ctx, key, ClientSignalSessionTTL)
+	return p, nil
+}
+
 // =====================================================================
 // internals
 // =====================================================================

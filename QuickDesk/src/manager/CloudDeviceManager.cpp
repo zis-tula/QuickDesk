@@ -607,6 +607,7 @@ void CloudDeviceManager::stopSync()
         m_syncSocket->deleteLater();
         m_syncSocket = nullptr;
         m_syncAuthOk = false;
+        m_serverRev = 0;
         LOG_INFO("[CloudDeviceManager] Realtime events WebSocket stopped");
     }
 }
