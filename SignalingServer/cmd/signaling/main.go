@@ -262,111 +262,115 @@ func main() {
 		// via the Origin-whitelist fallback).
 		v1.GET("/ice-config", hostHandler.GetICEConfig)
 
-		// -----------------------------------------------------------------
-		// -----------------------------------------------------------------
-		// Admin surface.
-		// -----------------------------------------------------------------
-		adminAuthGroup := v1.Group("/admin/auth")
-		{
-			adminAuthGroup.POST("/sessions", adminAuthHandler.CreateSession)
-			adminAuthGroup.POST("/sessions:totp", adminAuthHandler.CreateSessionFromTOTP)
-			adminAuthGroup.POST("/tokens:refresh", adminAuthHandler.RefreshToken)
-			// Logout requires an admin token.
-			adminAuthGroup.DELETE("/sessions/current", adminAuth.Required(), adminAuthHandler.DeleteCurrentSession)
-		}
+	}
 
-		admin := v1.Group("/admin")
-		admin.Use(adminAuth.Required())
-		admin.Use(middleware.IPWhitelistMiddleware(settingsService))
-		{
-			// 2FA enrollment must work *before* the super_admin has 2FA
-			// enabled, so it sits on the auth-only group and skips the
-			// RequireAdmin2FAForWrites gate below.
-			admin.POST("/admins/me/2fa:setup", adminTOTPHandler.Setup)
-			admin.POST("/admins/me/2fa:verify", adminTOTPHandler.Verify)
-			admin.DELETE("/admins/me/2fa", adminTOTPHandler.Delete)
-		}
+	// -------------------------------------------------------------------
+	// Admin surface — registered outside the v1 API-key-protected group.
+	// Admin endpoints authenticate via admin JWT tokens (adminAuth), not
+	// via X-API-Key. This avoids a chicken-and-egg problem: the admin
+	// web UI is where API keys/allowed-origins are configured, so it
+	// cannot itself require an API key to be accessible.
+	// -------------------------------------------------------------------
+	adminAuthGroup := router.Group("/v1/admin/auth")
+	{
+		adminAuthGroup.POST("/sessions", adminAuthHandler.CreateSession)
+		adminAuthGroup.POST("/sessions:totp", adminAuthHandler.CreateSessionFromTOTP)
+		adminAuthGroup.POST("/tokens:refresh", adminAuthHandler.RefreshToken)
+		// Logout requires an admin token.
+		adminAuthGroup.DELETE("/sessions/current", adminAuth.Required(), adminAuthHandler.DeleteCurrentSession)
+	}
 
-		// All other admin endpoints require 2FA-enabled super_admins for
-		// writes (搂2.16). Read endpoints fall through unchanged.
-		adminGuarded := v1.Group("/admin")
-		adminGuarded.Use(adminAuth.Required())
-		adminGuarded.Use(middleware.IPWhitelistMiddleware(settingsService))
-		adminGuarded.Use(middleware.RequireAdmin2FAForWrites(adminUserService))
-		{
-			// Admin accounts (CRUD over the admin users themselves).
-			adminGuarded.GET("/admins", adminAdminsHandler.List)
-			adminGuarded.POST("/admins", adminAdminsHandler.Create)
-			adminGuarded.GET("/admins/:id", adminAdminsHandler.Get)
-			adminGuarded.PATCH("/admins/:id", adminAdminsHandler.Patch)
-			adminGuarded.DELETE("/admins/:id", adminAdminsHandler.Delete)
+	admin := router.Group("/v1/admin")
+	admin.Use(adminAuth.Required())
+	admin.Use(middleware.IPWhitelistMiddleware(settingsService))
+	{
+		// 2FA enrollment must work *before* the super_admin has 2FA
+		// enabled, so it sits on the auth-only group and skips the
+		// RequireAdmin2FAForWrites gate below.
+		admin.POST("/admins/me/2fa/setup", adminTOTPHandler.Setup)
+		admin.POST("/admins/me/2fa/verify", adminTOTPHandler.Verify)
+		admin.DELETE("/admins/me/2fa", adminTOTPHandler.Delete)
+	}
 
-			// Business users.
-			adminGuarded.GET("/users", adminUsersHandler.List)
-			adminGuarded.POST("/users", adminUsersHandler.Create)
-			adminGuarded.POST("/users:batch", adminUsersHandler.Batch)
-			adminGuarded.GET("/users/:id", adminUsersHandler.Get)
-			adminGuarded.GET("/users/:id/details", adminUsersHandler.GetDetails)
-			adminGuarded.PATCH("/users/:id", adminUsersHandler.Patch)
-			adminGuarded.DELETE("/users/:id", adminUsersHandler.Delete)
-			adminGuarded.POST("/users/:id/sessions:revoke", adminUsersHandler.RevokeSessions)
-			adminGuarded.PATCH("/users/:id/device-count", adminUsersHandler.PatchDeviceCount)
+	// All other admin endpoints require 2FA-enabled super_admins for
+	// writes (§2.16). Read endpoints fall through unchanged.
+	adminGuarded := router.Group("/v1/admin")
+	adminGuarded.Use(adminAuth.Required())
+	adminGuarded.Use(middleware.IPWhitelistMiddleware(settingsService))
+	adminGuarded.Use(middleware.RequireAdmin2FAForWrites(adminUserService))
+	{
+		// Admin accounts (CRUD over the admin users themselves).
+		adminGuarded.GET("/admins", adminAdminsHandler.List)
+		adminGuarded.POST("/admins", adminAdminsHandler.Create)
+		adminGuarded.GET("/admins/:id", adminAdminsHandler.Get)
+		adminGuarded.PATCH("/admins/:id", adminAdminsHandler.Patch)
+		adminGuarded.DELETE("/admins/:id", adminAdminsHandler.Delete)
 
-			// Devices.
-			adminGuarded.GET("/devices", adminDevicesHandler.List)
-			adminGuarded.GET("/devices/:device_id", adminDevicesHandler.Get)
-			adminGuarded.DELETE("/devices/:device_id", adminDevicesHandler.Delete)
-			adminGuarded.POST("/devices/:device_id/unbind", adminDevicesHandler.ForceUnbind)
-			adminGuarded.POST("/devices/:device_id/secret:rotate", adminDevicesHandler.RotateSecret)
-			adminGuarded.POST("/devices:batch", func(c *gin.Context) {
-				adminDevicesHandler.Batch(c, groupService)
-			})
+		// Business users.
+		adminGuarded.GET("/users", adminUsersHandler.List)
+		adminGuarded.POST("/users", adminUsersHandler.Create)
+		adminGuarded.POST("/users:batch", adminUsersHandler.Batch)
+		adminGuarded.GET("/users/:id", adminUsersHandler.Get)
+		adminGuarded.GET("/users/:id/details", adminUsersHandler.GetDetails)
+		adminGuarded.PATCH("/users/:id", adminUsersHandler.Patch)
+		adminGuarded.DELETE("/users/:id", adminUsersHandler.Delete)
+		adminGuarded.POST("/users/:id/sessions:revoke", adminUsersHandler.RevokeSessions)
+		adminGuarded.PATCH("/users/:id/device-count", adminUsersHandler.PatchDeviceCount)
 
-			// User 鈫?device bindings.
-			adminGuarded.GET("/device-bindings", adminDevicesHandler.ListBindings)
+		// Devices.
+		adminGuarded.GET("/devices", adminDevicesHandler.List)
+		adminGuarded.GET("/devices/:device_id", adminDevicesHandler.Get)
+		adminGuarded.DELETE("/devices/:device_id", adminDevicesHandler.Delete)
+		adminGuarded.POST("/devices/:device_id/unbind", adminDevicesHandler.ForceUnbind)
+		adminGuarded.POST("/devices/:device_id/secret:rotate", adminDevicesHandler.RotateSecret)
+		adminGuarded.POST("/devices:batch", func(c *gin.Context) {
+			adminDevicesHandler.Batch(c, groupService)
+		})
 
-			// Stats / observability.
-			adminGuarded.GET("/stats", adminStatsHandler.GetStats)
-			adminGuarded.GET("/system/status", adminStatsHandler.GetSystemStatus)
-			adminGuarded.GET("/connections", adminStatsHandler.GetConnections)
-			adminGuarded.GET("/activity", adminStatsHandler.GetActivity)
-			adminGuarded.GET("/trends", adminStatsHandler.GetTrends)
+		// User → device bindings.
+		adminGuarded.GET("/device-bindings", adminDevicesHandler.ListBindings)
 
-			// Audit logs.
-			adminGuarded.GET("/audit-logs", adminAuditHandler.List)
+		// Stats / observability.
+		adminGuarded.GET("/stats", adminStatsHandler.GetStats)
+		adminGuarded.GET("/system/status", adminStatsHandler.GetSystemStatus)
+		adminGuarded.GET("/connections", adminStatsHandler.GetConnections)
+		adminGuarded.GET("/activity", adminStatsHandler.GetActivity)
+		adminGuarded.GET("/trends", adminStatsHandler.GetTrends)
 
-			// Preset.
-			adminGuarded.GET("/preset", adminPresetHandler.Get)
-			adminGuarded.PUT("/preset", adminPresetHandler.Update)
+		// Audit logs.
+		adminGuarded.GET("/audit-logs", adminAuditHandler.List)
 
-			// Settings.
-			adminGuarded.GET("/settings", adminSettingsHandler.Get)
-			adminGuarded.PUT("/settings", adminSettingsHandler.Update)
+		// Preset.
+		adminGuarded.GET("/preset", adminPresetHandler.Get)
+		adminGuarded.PUT("/preset", adminPresetHandler.Update)
 
-			// Webhooks.
-			adminGuarded.GET("/webhooks", adminWebhooksHandler.List)
-			adminGuarded.POST("/webhooks", adminWebhooksHandler.Create)
-			adminGuarded.GET("/webhooks/:id", adminWebhooksHandler.Get)
-			adminGuarded.PATCH("/webhooks/:id", adminWebhooksHandler.Patch)
-			adminGuarded.DELETE("/webhooks/:id", adminWebhooksHandler.Delete)
-			// §2.2: webhook delivery test. We avoid the AIP-136
-			// "{name}:test" custom-method form here because gin's
-			// httprouter cannot register a literal suffix on a
-			// wildcard segment ("only one wildcard per path segment is
-			// allowed"). Treating the test delivery as a sub-resource
-			// is RESTful, gin-friendly and clients still POST against
-			// /webhooks/:id/test which reads naturally.
-			adminGuarded.POST("/webhooks/:id/test", adminWebhooksHandler.Test)
+		// Settings.
+		adminGuarded.GET("/settings", adminSettingsHandler.Get)
+		adminGuarded.PUT("/settings", adminSettingsHandler.Update)
 
-			// Device groups.
-			adminGuarded.GET("/groups", adminGroupsHandler.List)
-			adminGuarded.POST("/groups", adminGroupsHandler.Create)
-			adminGuarded.PATCH("/groups/:id", adminGroupsHandler.Patch)
-			adminGuarded.DELETE("/groups/:id", adminGroupsHandler.Delete)
-			adminGuarded.POST("/groups/:id/devices", adminGroupsHandler.AddDevices)
-			adminGuarded.DELETE("/groups/:id/devices", adminGroupsHandler.RemoveDevices)
-			adminGuarded.GET("/groups/:id/devices", adminGroupsHandler.ListDevices)
-		}
+		// Webhooks.
+		adminGuarded.GET("/webhooks", adminWebhooksHandler.List)
+		adminGuarded.POST("/webhooks", adminWebhooksHandler.Create)
+		adminGuarded.GET("/webhooks/:id", adminWebhooksHandler.Get)
+		adminGuarded.PATCH("/webhooks/:id", adminWebhooksHandler.Patch)
+		adminGuarded.DELETE("/webhooks/:id", adminWebhooksHandler.Delete)
+		// §2.2: webhook delivery test. We avoid the AIP-136
+		// "{name}:test" custom-method form here because gin's
+		// httprouter cannot register a literal suffix on a
+		// wildcard segment ("only one wildcard per path segment is
+		// allowed"). Treating the test delivery as a sub-resource
+		// is RESTful, gin-friendly and clients still POST against
+		// /webhooks/:id/test which reads naturally.
+		adminGuarded.POST("/webhooks/:id/test", adminWebhooksHandler.Test)
+
+		// Device groups.
+		adminGuarded.GET("/groups", adminGroupsHandler.List)
+		adminGuarded.POST("/groups", adminGroupsHandler.Create)
+		adminGuarded.PATCH("/groups/:id", adminGroupsHandler.Patch)
+		adminGuarded.DELETE("/groups/:id", adminGroupsHandler.Delete)
+		adminGuarded.POST("/groups/:id/devices", adminGroupsHandler.AddDevices)
+		adminGuarded.DELETE("/groups/:id/devices", adminGroupsHandler.RemoveDevices)
+		adminGuarded.GET("/groups/:id/devices", adminGroupsHandler.ListDevices)
 	}
 
 	// -------------------------------------------------------------------

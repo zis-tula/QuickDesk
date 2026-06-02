@@ -244,7 +244,7 @@ MainController::MainController(QObject* parent)
     // cached lastDeviceId belongs to a different server and must not be
     // used for logout (would return 404 at best, or worse — clear the
     // wrong device's logged_in on a colliding id).
-    connect(m_serverManager.get(), &ServerManager::serverUrlChanged, this, [this]() {
+    connect(m_serverManager.get(), &ServerManager::serverUrlChanged, this, []() {
         core::LocalConfigCenter::instance().setLastDeviceId("");
         LOG_INFO("Signaling server URL changed — cleared lastDeviceId");
     });

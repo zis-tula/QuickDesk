@@ -610,8 +610,8 @@ request shapes; this section documents only the route table.
 | `GET` | `/v1/admin/admins/:id` |
 | `PATCH` | `/v1/admin/admins/:id` |
 | `DELETE` | `/v1/admin/admins/:id` |
-| `POST` | `/v1/admin/admins/me/2fa:setup` |
-| `POST` | `/v1/admin/admins/me/2fa:verify` |
+| `POST` | `/v1/admin/admins/me/2fa/setup` |
+| `POST` | `/v1/admin/admins/me/2fa/verify` |
 | `DELETE` | `/v1/admin/admins/me/2fa` |
 
 ### 8.3 Business users
@@ -662,8 +662,11 @@ request shapes; this section documents only the route table.
 > `:test` would silently fail to register. Sub-resource form is RESTful and
 > consistent with what gin can express. See §6 W1 in the design doc for the
 > historical record. All other "colon action" endpoints (`sessions:sms`,
-> `tokens:refresh`, `users:batch`, `secret:rotate`, `2fa:setup`, …) have a
-> literal segment before the colon and work fine.
+> `tokens:refresh`, `users:batch`, `secret:rotate`, …) have a
+> literal segment before the colon and work fine. The `2fa/setup` and
+> `2fa/verify` endpoints are exceptions — they use sub-resource form because
+> `2fa:setup` vs `2fa:verify` would be two competing wildcards on the same
+> segment (same issue as `webhooks/:id:test`).
 
 ---
 

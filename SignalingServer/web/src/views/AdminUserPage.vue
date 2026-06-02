@@ -243,7 +243,7 @@ async function loadAdminUsers() {
 /**
  * §2.16 banner action: launch the self-service 2FA setup flow for the
  * currently logged-in super_admin. Reuses the existing setup dialog.
- * (`/v1/admin/admins/me/2fa:setup` — `admins/me/2fa:*` routes only ever
+ * (`/v1/admin/admins/me/2fa/setup` — `admins/me/2fa/*` routes only ever
  * act on the caller, so we don't need a row argument.)
  */
 function handleSetupMy2FA() {
@@ -340,7 +340,7 @@ const totpCode = ref('')
 const totpLoading = ref(false)
 
 async function handleSetup2FA() {
-  // §2.2: /v1/admin/admins/me/2fa:setup only operates on the current
+  // §2.2: /v1/admin/admins/me/2fa/setup only operates on the current
   // admin — no row argument is accepted. The banner button and the
   // per-row button both call this same function.
   totpCode.value = ''

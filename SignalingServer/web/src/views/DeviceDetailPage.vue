@@ -65,9 +65,9 @@
         </div>
       </template>
       <el-table :data="connectionHistory" stripe style="width: 100%" size="small">
-        <el-table-column prop="time" :label="t('dashboard.time')" width="180" />
-        <el-table-column prop="action" :label="t('dashboard.activity')" width="150" />
-        <el-table-column prop="details" :label="t('dashboard.details')" show-overflow-tooltip />
+        <el-table-column prop="created_at" :label="t('dashboard.time')" width="180" />
+        <el-table-column prop="device_name" :label="t('dashboard.activity')" width="150" />
+        <el-table-column prop="error_msg" :label="t('dashboard.details')" show-overflow-tooltip />
         <el-table-column prop="status" :label="t('common.status')" width="100">
           <template #default="{ row }">
             <el-tag :type="row.status === 'success' ? 'success' : 'warning'" size="small">

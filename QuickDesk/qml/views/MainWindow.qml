@@ -113,9 +113,23 @@ ApplicationWindow {
                 }
                 return
             }
-            
-            // Save device credentials when connection is successfully established
+
+            // Deferred window creation: when the connection reaches "connected"
+            // state, the ClientManager has the device in connectedDeviceIds and
+            // we can safely create the remote window. This handles the async gap
+            // introduced by verifyAccessCode (v1 refactor §2.6).
             if (state === "connected" && root.pendingDeviceCredentials[deviceId]) {
+                if (!root.showRemoteWindow(deviceId)) {
+                    console.error("Remote window creation failed, disconnecting:", deviceId)
+                    delete root.pendingDeviceCredentials[deviceId]
+                    var newAborted = Object.assign({}, root.abortedConnections)
+                    newAborted[deviceId] = true
+                    root.abortedConnections = newAborted
+                    mainController.clientManager.disconnectFromHost(deviceId)
+                    remoteControlPage.resetConnectingState()
+                    return
+                }
+
                 var credentials = root.pendingDeviceCredentials[deviceId]
                 console.log("Saving device to history:", credentials.deviceId)
                 
@@ -131,6 +145,7 @@ ApplicationWindow {
             // Clean up pending credentials on failure
             if (state === "failed" && root.pendingDeviceCredentials[deviceId]) {
                 delete root.pendingDeviceCredentials[deviceId]
+                remoteControlPage.resetConnectingState()
             }
         }
     }
@@ -550,22 +565,13 @@ ApplicationWindow {
                         toast.show(qsTr("Connecting..."), QDToast.Type.Info)
                         var connectedDeviceId = root.mainController.connectToRemoteHost(deviceId, password)
                         if (connectedDeviceId) {
-                            // Store password temporarily for saving after successful connection
+                            // Store credentials for saving after successful connection.
+                            // Window creation is deferred until onConnectionStateChanged
+                            // fires with "connecting" state — connectToRemoteHost is now
+                            // async (verifyAccessCode HTTP before spawning client).
                             root.pendingDeviceCredentials[connectedDeviceId] = {
                                 deviceId: deviceId,
                                 password: password
-                            }
-                            
-                            // Create remote window immediately (it will handle connection states)
-                            if (!root.showRemoteWindow(connectedDeviceId)) {
-                                // Window creation failed — mark as aborted, disconnect and clean up
-                                console.error("Remote window creation failed, disconnecting:", connectedDeviceId)
-                                delete root.pendingDeviceCredentials[connectedDeviceId]
-                                var newAborted = Object.assign({}, root.abortedConnections)
-                                newAborted[connectedDeviceId] = true
-                                root.abortedConnections = newAborted
-                                root.mainController.clientManager.disconnectFromHost(connectedDeviceId)
-                                remoteControlPage.resetConnectingState()
                             }
                         }
                     }
@@ -590,20 +596,14 @@ ApplicationWindow {
                     onConnectToDevice: function(deviceId, accessCode) {
                         // Switch to Remote Control tab
                         navigationView.currentIndex = 0
-                        // Initiate connection
+                        // Initiate connection (async — window creation deferred to
+                        // onConnectionStateChanged "connected", same as RemoteControlPage)
                         toast.show(qsTr("Connecting..."), QDToast.Type.Info)
                         var connectedDeviceId = root.mainController.connectToRemoteHost(deviceId, accessCode)
                         if (connectedDeviceId) {
                             root.pendingDeviceCredentials[connectedDeviceId] = {
                                 deviceId: deviceId,
                                 password: accessCode
-                            }
-                            if (!root.showRemoteWindow(connectedDeviceId)) {
-                                delete root.pendingDeviceCredentials[connectedDeviceId]
-                                var newAborted = Object.assign({}, root.abortedConnections)
-                                newAborted[connectedDeviceId] = true
-                                root.abortedConnections = newAborted
-                                root.mainController.clientManager.disconnectFromHost(connectedDeviceId)
                             }
                         }
                     }

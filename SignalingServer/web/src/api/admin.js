@@ -1,8 +1,10 @@
 // /v1/admin/admins/* — admin account CRUD plus 2FA self-service.
 //
-// 2FA endpoints use the colon-action style from §2.2 routing table:
-//   POST   /v1/admin/admins/me/2fa:setup
-//   POST   /v1/admin/admins/me/2fa:verify
+// 2FA endpoints use sub-resource style (not colon-action) because
+// gin/httprouter treats `2fa:setup` and `2fa:verify` as competing
+// wildcards on the same path segment — see §6 W1/W4 in design doc:
+//   POST   /v1/admin/admins/me/2fa/setup
+//   POST   /v1/admin/admins/me/2fa/verify
 //   DELETE /v1/admin/admins/me/2fa
 //
 // List/details follow the standard cursor envelope {items, next_cursor}.
@@ -45,11 +47,11 @@ export function deleteAdminUser(id) {
 // ----- Self-service 2FA --------------------------------------------------
 
 export function setup2FA() {
-  return authJson(`${BASE}/admins/me/2fa:setup`, { method: 'POST' })
+  return authJson(`${BASE}/admins/me/2fa/setup`, { method: 'POST' })
 }
 
 export function verify2FA(code) {
-  return authJson(`${BASE}/admins/me/2fa:verify`, {
+  return authJson(`${BASE}/admins/me/2fa/verify`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ code }),

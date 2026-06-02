@@ -285,8 +285,11 @@ POST   /v1/admin/admins                      创建
 GET    /v1/admin/admins/:id
 PATCH  /v1/admin/admins/:id
 DELETE /v1/admin/admins/:id
-POST   /v1/admin/admins/me/2fa:setup         当前管理员 2FA 设置
-POST   /v1/admin/admins/me/2fa:verify
+POST   /v1/admin/admins/me/2fa/setup         当前管理员 2FA 设置
+                                             ⚠️ 注意：这里用子资源 `/setup`、`/verify` 而非冒号动作 `:setup`、`:verify`。
+                                                因为 `2fa:setup` 与 `2fa:verify` 在 gin/httprouter 里被视为同一路径段上
+                                                的两个竞争 wildcard（同 `/webhooks/:id:test` 问题，见 §6 W4）。
+POST   /v1/admin/admins/me/2fa/verify
 DELETE /v1/admin/admins/me/2fa
 
 # ===== 管理员：业务用户 =====
@@ -340,8 +343,10 @@ POST   /v1/admin/webhooks/:id/test           发送一次 synthetic 测试事件
                                                 注册 `/webhooks/:id:test` 会触发 "only one wildcard per path segment is allowed" panic
                                                 （被 gin 内部 recover，表面无错但路由**未生效**，请求会错误匹配到 `/webhooks/:id`）。
                                                 其余 "冒号动作" 端点（如 `sessions:sms` / `devices:batch` /
-                                                `2fa:setup` / `secret:rotate`）的冒号**前方都是 literal 段**，
+                                                `secret:rotate`）的冒号**前方都是 literal 段**，
                                                 完全符合 AIP-136 并被 gin 原生支持，保留不动。
+                                                ⚠️ `2fa/setup` / `2fa/verify` 同理改为子资源形式——
+                                                `2fa:setup` 与 `2fa:verify` 也是同段两个 wildcard 冲突（见 §6 W4）。
 
 # ===== WebSocket =====
 GET    /v1/realtime/events                   连接后首帧 {type:"auth", access_token:"..."}
@@ -996,7 +1001,7 @@ Qt 和 Chromium host 通过 stdio JSON 通信。重构改了 schema，必须防�
 影响面比 WebClient 大——admin 用到几乎所有 /v1/admin/* 路由。改动清单：
 
 - [ ] `src/api/auth.js`：`POST /v1/admin/auth/sessions`（多加 totp_code 可选参数）；新增 refresh token handling；`authFetch` 自动带 `Authorization: Bearer` + 401 拦截
-- [ ] `src/api/admin.js`（管理员账户）：`/v1/admin/admins/*`；2FA 子资源路径 `admins/me/2fa:setup|:verify`
+- [ ] `src/api/admin.js`（管理员账户）：`/v1/admin/admins/*`；2FA 子资源路径 `admins/me/2fa/setup|/verify`
 - [ ] `src/api/admin_device.js`：`/v1/admin/devices`，新增 `secret:rotate`、`devices/:id/unbind`
 - [ ] `src/api/audit.js`：`/v1/admin/audit-logs`
 - [ ] `src/api/device_groups.js`：`/v1/admin/groups/*`
@@ -1409,7 +1414,7 @@ P2 — 边界 / 稳定性 / 攻击面：
       - C. **`/webhooks/:id/test` 子资源形式** — gin/httprouter 原生支持、完全 RESTful、GitHub/Stripe 风格（如 Stripe `/charges/:id/capture`），AIP-136 rationale 也允许（"Custom methods should only be used for functionality that can not be easily expressed via standard methods"——创建一次 test-delivery 就是标准 POST 子资源）
       - D. 保留原样 — 留坑，拒绝
     * **采纳方案 C**：`POST /v1/admin/webhooks/:id/test`。服务端 `main.go` + admin web `webhooks.js::testWebhook` + 本文档 §2.2 路由表同步更新。路由表**紧邻条目新增 20 行注释**解释此豁免，便于后续维护者避免踩同一坑
-    * **其他 "冒号动作" 端点全部保留**（`sessions:sms / tokens:refresh / password-resets:confirm / devices:provision / access-code:verify / sessions:totp / 2fa:setup / 2fa:verify / users:batch / sessions:revoke / secret:rotate / devices:batch`）——这些冒号**前方都是 literal 段**（不是参数段），符合 AIP-136 "collection-based custom methods" 形式，gin 完美支持并已线上验证
+    * **其他 "冒号动作" 端点全部保留**（`sessions:sms / tokens:refresh / password-resets:confirm / devices:provision / access-code:verify / sessions:totp / users:batch / sessions:revoke / secret:rotate / devices:batch`）——这些冒号**前方都是 literal 段**（不是参数段），符合 AIP-136 "collection-based custom methods" 形式，gin 完美支持并已线上验证。~~`2fa:setup / 2fa:verify`~~ 已改为子资源形式 `2fa/setup` / `2fa/verify`（见 W4）
   - **W2 admin camelCase 字段全面统一为 snake_case** | 用户指示"改服务端统一"。V3/V4/V5 当时是"适应服务端既有驼峰"的修复，现在改为"服务端与整个 v1 契约（设备/连接/收藏 所有字段本就 snake_case）保持一致"。改动：
     * **服务端（Go）**：
       - `internal/models/user.go`：`deviceCount/channelType/createdAt/updatedAt` → snake_case（共 4 字段）
@@ -1430,6 +1435,7 @@ P2 — 边界 / 稳定性 / 攻击面：
     * **前端内部对象保留驼峰**（如 `overview.totalDevices`、`siteName` ref 变量）— JS 惯用 camelCase；只有跨**网络边界**的字段名改
     * 改完 `go build ./...` + `go vet ./...` 无 warning；`npm run build` 两边 OK
   - **W3 AdminUserPage 2FA 按钮限定到"自己行"** | §2.2 `/admins/me/2fa:{setup,verify,delete}` 三个端点**仅对当前登录 admin** 生效——路径里就写明 `/me`。原 view 把 "设置 2FA" / "关闭 2FA" 按钮**渲染到每一行**，点任意行都触发 `setup2FA()` 给自己开启，会让管理员误以为能"为其他管理员开 2FA"。按 `row.id === currentAdmin.id` 过滤，只在自己那一行显示按钮；`handleSetup2FA(row)` / `handleDisable2FA(row)` 也简化为无参（row 不再有意义）
+- **2026-05-21 | 部署修复 W4：`2fa:setup` / `2fa:verify` 路由冲突** | `./deploy-build.sh` 部署失败，panic：`':verify' in new path '/v1/admin/admins/me/2fa:verify' conflicts with existing wildcard ':setup'`。根因与 W1 完全相同——gin/httprouter 把 `2fa:setup` 和 `2fa:verify` 视为同一路径段上的两个竞争 wildcard。修复：改为子资源形式 `/admins/me/2fa/setup` 和 `/admins/me/2fa/verify`（与 `/webhooks/:id/test` 处理方式一致）。改动文件：`cmd/signaling/main.go`（路由注册）、`web/src/api/admin.js`（前端调用）、`web/src/views/AdminUserPage.vue`（注释）、`docs/user-api-docs.md`。部署验证通过。
 - **2026-05-12 | 阶段 5 文档 + 最终验证完成（重构完成）** | 阶段 5 按 §3 阶段 5 清单全部落地，5 套构建 + 40 场景验收均通过（24 号场景部分偏离，见 X1）。工作清单：
   - **文档重写**：
     * `SignalingServer/docs/user-api-docs.md` 从零重写为 v1 文档（11 节 + 附录）；包含：conventions（snake_case / cursor pagination / request id）、三层鉴权、公开/Auth/Me/Devices/WebSocket/Admin 全量路由、RFC 7807 错误码、rate limits、实时事件类型表；末尾附 pre-refactor → v1 路径映射表便于迁移排查

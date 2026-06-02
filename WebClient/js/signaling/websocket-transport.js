@@ -153,6 +153,16 @@ export class WebSocketTransport {
                     this.onMessage(trimmed);
                     return;
                 }
+                // JSON envelope carrying Jingle XML: {payload:"<iq...>", client_id:"..."}
+                // Unwrap and pass the XML payload to the session layer.
+                if (json.payload && typeof json.payload === 'string') {
+                    if (!this._authOk) {
+                        console.warn('[WebSocket] Dropping pre-auth payload');
+                        return;
+                    }
+                    this.onMessage(json.payload);
+                    return;
+                }
                 // Other JSON control frames (session.revoked etc.).
                 this.onMessage(trimmed);
                 return;
@@ -169,6 +179,8 @@ export class WebSocketTransport {
 
     /**
      * Send a payload. Refuses to send SDP/ICE before auth_ok (§2.13).
+     * Wraps XML (Jingle) messages in the JSON envelope {payload, client_id}
+     * expected by the v1 signaling server (Chromium host parses this format).
      */
     send(message) {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
@@ -179,7 +191,12 @@ export class WebSocketTransport {
             console.error('[WebSocket] auth not complete, refusing to send');
             return false;
         }
-        this.ws.send(message);
+        // Wrap in JSON envelope matching Chromium client's SendJingleEnvelope format.
+        const envelope = JSON.stringify({
+            client_id: this._clientId || '',
+            payload: message
+        });
+        this.ws.send(envelope);
         return true;
     }
 

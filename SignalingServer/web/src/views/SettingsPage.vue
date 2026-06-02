@@ -198,22 +198,22 @@ const loading = ref(false)
 const saving = ref(false)
 
 const form = reactive({
-  siteEnabled: true,
-  siteName: 'QuickDesk',
-  loginLogo: '',
-  smallLogo: '',
+  site_enabled: true,
+  site_name: 'QuickDesk',
+  login_logo: '',
+  small_logo: '',
   favicon: '',
-  turnUrls: '',
-  turnAuthSecret: '',
-  turnCredentialTtl: 86400,
-  stunUrls: '',
-  apiKey: '',
-  allowedOrigins: '',
-  smsAccessKeyId: '',
-  smsAccessKeySecret: '',
-  smsSignName: '',
-  smsTemplateCode: '',
-  adminIpWhitelist: ''
+  turn_urls: '',
+  turn_auth_secret: '',
+  turn_credential_ttl: 86400,
+  stun_urls: '',
+  api_key: '',
+  allowed_origins: '',
+  sms_access_key_id: '',
+  sms_access_key_secret: '',
+  sms_sign_name: '',
+  sms_template_code: '',
+  admin_ip_whitelist: ''
 })
 
 const isSmsEnabled = computed(() =>

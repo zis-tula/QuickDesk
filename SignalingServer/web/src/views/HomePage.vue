@@ -127,10 +127,10 @@
       </div>
 
       <el-table :data="activityList" stripe style="width: 100%" size="small" :row-class-name="rowClassName">
-        <el-table-column prop="time" :label="t('dashboard.time')" width="180" />
-        <el-table-column prop="deviceId" :label="t('dashboard.deviceId')" width="120" />
-        <el-table-column prop="action" :label="t('dashboard.activity')" width="150" />
-        <el-table-column prop="details" :label="t('dashboard.details')" show-overflow-tooltip />
+        <el-table-column prop="created_at" :label="t('dashboard.time')" width="180" />
+        <el-table-column prop="device_id" :label="t('dashboard.deviceId')" width="120" />
+        <el-table-column prop="device_name" :label="t('dashboard.activity')" width="150" />
+        <el-table-column prop="error_msg" :label="t('dashboard.details')" show-overflow-tooltip />
         <el-table-column prop="status" :label="t('common.status')" width="100">
           <template #default="{ row }">
             <el-tag :type="row.status === 'success' ? 'success' : 'warning'" size="small">
@@ -310,10 +310,10 @@ async function loadStats() {
 
 function handleExportActivity() {
   const columns = [
-    { key: 'time', label: 'Time' },
-    { key: 'deviceId', label: 'Device ID' },
-    { key: 'action', label: 'Activity' },
-    { key: 'details', label: 'Details' },
+    { key: 'created_at', label: 'Time' },
+    { key: 'device_id', label: 'Device ID' },
+    { key: 'device_name', label: 'Device Name' },
+    { key: 'error_msg', label: 'Details' },
     { key: 'status', label: 'Status' }
   ]
   exportCSV(columns, activityList.value, 'activity.csv')
@@ -328,9 +328,13 @@ async function loadTrends() {
     if (!chartInstance) {
       chartInstance = echarts.init(chartRef.value)
     }
-    const labels = Array.isArray(data.labels) ? data.labels : []
-    const connections = Array.isArray(data.connections) ? data.connections : []
-    const newDevices = Array.isArray(data.newDevices) ? data.newDevices : []
+    const rawConns = Array.isArray(data.connections) ? data.connections : []
+    const rawDevices = Array.isArray(data.devices) ? data.devices : []
+    // API returns [{day, count}, ...]; extract labels from the longer series.
+    const longerSeries = rawConns.length >= rawDevices.length ? rawConns : rawDevices
+    const labels = longerSeries.map(r => r.day ? r.day.substring(0, 10) : '')
+    const connections = rawConns.map(r => r.count || 0)
+    const newDevices = rawDevices.map(r => r.count || 0)
     chartInstance.setOption({
       tooltip: { trigger: 'axis' },
       legend: { data: [t('dashboard.totalConnections'), t('dashboard.todayNewDevices')] },
@@ -361,14 +365,16 @@ async function refreshSystemStatus() {
     stats.value = statsData
     connectionStatus.value = connectionData
 
-    overview.value.totalDevices = statsData.totalDevices || 0
-    overview.value.totalConnections = connectionData.currentConnections || 0
-    overview.value.webSocketConnections = connectionData.webSocketConnections || 0
-    overview.value.apiRequests = connectionData.apiRequests || 0
+    overview.value.totalDevices = statsData.devices_total || 0
+    overview.value.totalConnections = Array.isArray(connectionData.items)
+      ? connectionData.items.length
+      : 0
+    overview.value.webSocketConnections = 0
+    overview.value.apiRequests = 0
 
-    todaySummary.value.todayNewDevices = statsData.todayNewDevices || 0
-    todaySummary.value.todayConnections = statsData.todayConnections || 0
-    todaySummary.value.todayActiveUsers = statsData.todayActiveUsers || 0
+    todaySummary.value.todayNewDevices = statsData.devices_new_today || 0
+    todaySummary.value.todayConnections = 0
+    todaySummary.value.todayActiveUsers = statsData.users_new_today || 0
   } catch (e) {
     console.error('Failed to refresh system status:', e.message)
   }
