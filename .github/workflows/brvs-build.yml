@@ -5,46 +5,156 @@ on:
     branches: [ brvs-chroma-corporate-dark-v1 ]
   pull_request:
     branches: [ master, main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  QT_VERSION: '6.8.3'
 
 jobs:
   build-windows:
+    name: Build Windows
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Setup Qt
-        uses: jurplel/install-qt-action@v3
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
         with:
-          version: '6.8.3'
-          host: 'windows'
-          target: 'desktop'
-          arch: 'win64_msvc2022_64'
-      - name: Build Windows
+          version: ${{ env.QT_VERSION }}
+          arch: win64_msvc2022_64
+          cache: true
+          modules: 'qtmultimedia qtwebsockets'
+
+      - name: Set Qt path
+        shell: bash
+        run: echo "ENV_QT_PATH=$(dirname "$QT_ROOT_DIR")" >> $GITHUB_ENV
+
+      - name: Detect VS environment
+        shell: pwsh
         run: |
-          scripts\build_qd_win.bat Release
-          scripts\package_qd_win.bat Release
-      - name: Upload Windows Artifact
+          $vs_install = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath
+          echo "ENV_VS_INSTALL=$vs_install" >> $env:GITHUB_ENV
+
+          $redist_root = Join-Path $vs_install "VC\Redist\MSVC"
+          $latest = Get-ChildItem $redist_root -Directory |
+            Where-Object { $_.Name -match '^\d+\.' } |
+            Sort-Object Name -Descending |
+            Select-Object -First 1
+          echo "ENV_VCRUNTIME_VERSION=$($latest.Name)" >> $env:GITHUB_ENV
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            quickdesk-mcp/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('quickdesk-mcp/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Build
+        shell: cmd
+        env:
+          ENV_QUICKDESK_API_KEY: ${{ secrets.QUICKDESK_API_KEY }}
+        run: call scripts\build_qd_win.bat Release
+
+      - name: Build MCP Bridge
+        shell: cmd
+        run: call scripts\build_mcp_win.bat Release
+
+      - name: Build Skill Host
+        shell: cmd
+        run: call scripts\build_skill_host_win.bat Release
+
+      - name: Build WebClient
+        shell: cmd
+        run: call scripts\build_webclient_win.bat
+
+      - name: Publish
+        shell: cmd
+        run: call scripts\publish_qd_win.bat Release
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+
+      - name: Package installer
+        shell: cmd
+        run: call scripts\package_qd_win.bat Release
+
+      - name: Get version
+        id: version
+        shell: bash
+        run: |
+          echo "version=$(cat version)" >> $GITHUB_OUTPUT
+          echo "ref-name=${GITHUB_REF##*/}" >> $GITHUB_OUTPUT
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BRVS-Chroma-Remote-Desktop-Windows
-          path: dist/
+          name: BRVS-Chroma-Remote-Desktop-win-x64-${{ steps.version.outputs.ref-name }}
+          path: publish/QuickDesk-win-x64-setup.exe
+
+      - name: Upload WebClient artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BRVS-Chroma-Remote-Desktop-WebClient-${{ steps.version.outputs.ref-name }}
+          path: WebClient/dist/
 
   build-macos:
+    name: Build macOS
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Setup Qt
-        uses: jurplel/install-qt-action@v3
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
         with:
-          version: '6.8.3'
-          host: 'mac'
-          target: 'desktop'
-          arch: 'clang_64'
-      - name: Build macOS
-        run: |
-          bash scripts/build_qd_mac.sh Release
-          bash scripts/package_qd_mac.sh Release
-      - name: Upload macOS Artifact
+          version: ${{ env.QT_VERSION }}
+          host: mac
+          target: desktop
+          arch: clang_64
+          cache: true
+          modules: 'qtmultimedia qtwebsockets'
+
+      - name: Set Qt path
+        shell: bash
+        run: echo "ENV_QT_PATH=$QT_ROOT_DIR" >> $GITHUB_ENV
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build
+        shell: bash
+        env:
+          ENV_QUICKDESK_API_KEY: ${{ secrets.QUICKDESK_API_KEY }}
+        run: bash scripts/build_qd_mac.sh Release
+
+      - name: Build MCP Bridge
+        shell: bash
+        run: bash scripts/build_mcp_mac.sh Release || true
+
+      - name: Build Skill Host
+        shell: bash
+        run: bash scripts/build_skill_host_mac.sh Release || true
+
+      - name: Publish
+        shell: bash
+        run: bash scripts/publish_qd_mac.sh Release || true
+
+      - name: Package
+        shell: bash
+        run: bash scripts/package_qd_mac.sh Release || true
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BRVS-Chroma-Remote-Desktop-macOS
-          path: dist/
+          name: BRVS-Chroma-Remote-Desktop-mac-arm64
+          path: publish/
