@@ -21,6 +21,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set up MSVC Developer Command Prompt
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
@@ -46,38 +51,11 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('quickdesk-mcp/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
-      - name: Build QuickDesk + Activate VS
+      - name: Build QuickDesk
         shell: cmd
         env:
           ENV_QUICKDESK_API_KEY: ${{ secrets.QUICKDESK_API_KEY }}
-        run: |
-          echo Activating Visual Studio Developer Command Prompt...
-          set VSWHERE="%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
-          
-          for /f "usebackq tokens=*" %%i in (`%VSWHERE% -latest -products * -property installationPath`) do (
-            if exist "%%i\Common7\Tools\VsDevCmd.bat" (
-              call "%%i\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64
-              echo VS Dev Cmd activated from %%i
-              goto :build
-            )
-          )
-          
-          echo WARNING: Could not find VsDevCmd.bat via vswhere, trying common paths...
-          if exist "C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\VsDevCmd.bat" (
-            call "C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64
-            goto :build
-          )
-          if exist "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\Tools\VsDevCmd.bat" (
-            call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64
-            goto :build
-          )
-          
-          echo ERROR: Could not activate Visual Studio environment!
-          exit /b 1
-          
-          :build
-          echo Starting build...
-          call scripts\build_qd_win.bat Release
+        run: call scripts\build_qd_win.bat Release
 
       - name: Verify GUI executable exists
         shell: pwsh
