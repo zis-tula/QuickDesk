@@ -62,21 +62,25 @@ jobs:
         run: |
           Write-Host "=== Verifying GUI build ===" -ForegroundColor Cyan
           $possiblePaths = @(
-            "output\QuickDesk\Release\QuickDesk.exe",
+            "output\x64\Release\ChromaDesk.exe",
+            "output\x64\Release\QuickDesk.exe",
+            "output\Release\ChromaDesk.exe",
             "output\Release\QuickDesk.exe",
-            "build-temp\Release\QuickDesk.exe"
+            "build-temp\x64\Release\ChromaDesk.exe",
+            "build-temp\x64\Release\QuickDesk.exe"
           )
           $found = $false
           foreach ($path in $possiblePaths) {
               if (Test-Path $path) {
-                  Write-Host "SUCCESS: Found QuickDesk.exe at $path" -ForegroundColor Green
+                  Write-Host "SUCCESS: Found GUI executable at $path" -ForegroundColor Green
                   Get-Item $path | Select-Object FullName, Length, LastWriteTime
                   $found = $true
                   break
               }
           }
           if (-not $found) {
-              Write-Host "CRITICAL ERROR: QuickDesk.exe NOT FOUND!" -ForegroundColor Red
+              Write-Host "CRITICAL ERROR: Main GUI executable NOT FOUND!" -ForegroundColor Red
+              Write-Host "Listing found executables:" -ForegroundColor Yellow
               Get-ChildItem -Path output, build-temp -Recurse -Include *.exe -ErrorAction SilentlyContinue | Select-Object FullName
               exit 1
           }
@@ -112,14 +116,14 @@ jobs:
           echo "version=$(cat version)" >> $GITHUB_OUTPUT
           echo "ref-name=${GITHUB_REF##*/}" >> $GITHUB_OUTPUT
 
-      - name: Upload BRVS Windows Installer
+      - name: Upload BRVS ChromaDesk Windows Installer
         uses: actions/upload-artifact@v4
         with:
-          name: BRVS-Chroma-Remote-Desktop-win-x64-${{ steps.version.outputs.ref-name }}
+          name: BRVS-ChromaDesk-win-x64-${{ steps.version.outputs.ref-name }}
           path: publish/QuickDesk-win-x64-setup.exe
 
       - name: Upload WebClient
         uses: actions/upload-artifact@v4
         with:
-          name: BRVS-Chroma-Remote-Desktop-WebClient-${{ steps.version.outputs.ref-name }}
+          name: BRVS-ChromaDesk-WebClient-${{ steps.version.outputs.ref-name }}
           path: WebClient/dist/
