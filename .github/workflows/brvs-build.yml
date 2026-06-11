@@ -1,0 +1,50 @@
+name: BRVS Chroma Remote Desktop - Multi-Platform Build
+
+on:
+  push:
+    branches: [ brvs-chroma-corporate-dark-v1 ]
+  pull_request:
+    branches: [ master, main ]
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Qt
+        uses: jurplel/install-qt-action@v3
+        with:
+          version: '6.8.3'
+          host: 'windows'
+          target: 'desktop'
+          arch: 'win64_msvc2022_64'
+      - name: Build Windows
+        run: |
+          scripts\build_qd_win.bat Release
+          scripts\package_qd_win.bat Release
+      - name: Upload Windows Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BRVS-Chroma-Remote-Desktop-Windows
+          path: dist/
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Qt
+        uses: jurplel/install-qt-action@v3
+        with:
+          version: '6.8.3'
+          host: 'mac'
+          target: 'desktop'
+          arch: 'clang_64'
+      - name: Build macOS
+        run: |
+          bash scripts/build_qd_mac.sh Release
+          bash scripts/package_qd_mac.sh Release
+      - name: Upload macOS Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BRVS-Chroma-Remote-Desktop-macOS
+          path: dist/
