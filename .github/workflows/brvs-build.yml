@@ -29,6 +29,12 @@ jobs:
           cache: true
           modules: 'qtmultimedia qtwebsockets'
 
+      - name: Setup MSVC Developer Command Prompt
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+          toolset: 14.40
+
       - name: Set Qt path
         shell: bash
         run: echo "ENV_QT_PATH=$(dirname "$QT_ROOT_DIR")" >> $GITHUB_ENV
