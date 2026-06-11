@@ -117,7 +117,7 @@ if not %errorlevel%==0 (
 
 echo=
 echo [*] building...
-cmake --build . --config %build_mode% --parallel
+cmd /c cmake --build . --config %build_mode% --parallel
 if not %errorlevel%==0 (
     echo [!] CMake build failed
     goto return

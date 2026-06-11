@@ -1,0 +1,129 @@
+name: BRVS Chroma Remote Desktop - Windows Build
+
+on:
+  push:
+    branches: [ brvs-chroma-corporate-dark-v1 ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  QT_VERSION: '6.8.3'
+
+jobs:
+  build-windows:
+    name: Build Windows
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up MSVC Developer Command Prompt
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: win64_msvc2022_64
+          cache: true
+          modules: 'qtmultimedia qtwebsockets'
+
+      - name: Set Qt path
+        shell: bash
+        run: echo "ENV_QT_PATH=$(dirname "$QT_ROOT_DIR")" >> $GITHUB_ENV
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            quickdesk-mcp/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('quickdesk-mcp/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Build QuickDesk
+        shell: cmd
+        env:
+          ENV_QUICKDESK_API_KEY: ${{ secrets.QUICKDESK_API_KEY }}
+        run: call scripts\build_qd_win.bat Release
+
+      - name: Verify GUI executable exists
+        shell: pwsh
+        run: |
+          Write-Host "=== Verifying GUI build ===" -ForegroundColor Cyan
+          $possiblePaths = @(
+            "output\x64\Release\ChromaDesk.exe",
+            "output\x64\Release\QuickDesk.exe",
+            "output\Release\ChromaDesk.exe",
+            "output\Release\QuickDesk.exe",
+            "build-temp\x64\Release\ChromaDesk.exe",
+            "build-temp\x64\Release\QuickDesk.exe"
+          )
+          $found = $false
+          foreach ($path in $possiblePaths) {
+              if (Test-Path $path) {
+                  Write-Host "SUCCESS: Found GUI executable at $path" -ForegroundColor Green
+                  Get-Item $path | Select-Object FullName, Length, LastWriteTime
+                  $found = $true
+                  break
+              }
+          }
+          if (-not $found) {
+              Write-Host "CRITICAL ERROR: Main GUI executable NOT FOUND!" -ForegroundColor Red
+              Write-Host "Listing found executables:" -ForegroundColor Yellow
+              Get-ChildItem -Path output, build-temp -Recurse -Include *.exe -ErrorAction SilentlyContinue | Select-Object FullName
+              exit 1
+          }
+
+      - name: Build MCP Bridge
+        shell: cmd
+        run: call scripts\build_mcp_win.bat Release
+
+      - name: Build Skill Host
+        shell: cmd
+        run: call scripts\build_skill_host_win.bat Release
+
+      - name: Build WebClient
+        shell: cmd
+        run: call scripts\build_webclient_win.bat
+
+      - name: Publish
+        shell: cmd
+        run: call scripts\publish_qd_win.bat Release
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+
+      - name: Package installer
+        shell: cmd
+        run: call scripts\package_qd_win.bat Release
+
+      - name: Get version
+        id: version
+        shell: bash
+        run: |
+          echo "version=$(cat version)" >> $GITHUB_OUTPUT
+          echo "ref-name=${GITHUB_REF##*/}" >> $GITHUB_OUTPUT
+
+      - name: Upload BRVS ChromaDesk Windows Installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: BRVS-ChromaDesk-win-x64-${{ steps.version.outputs.ref-name }}
+          path: publish/QuickDesk-win-x64-setup.exe
+
+      - name: Upload WebClient
+        uses: actions/upload-artifact@v4
+        with:
+          name: BRVS-ChromaDesk-WebClient-${{ steps.version.outputs.ref-name }}
+          path: WebClient/dist/
