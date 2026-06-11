@@ -21,6 +21,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup MSVC Developer Command Prompt
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
@@ -28,12 +33,6 @@ jobs:
           arch: win64_msvc2022_64
           cache: true
           modules: 'qtmultimedia qtwebsockets'
-
-      - name: Setup MSVC Developer Command Prompt
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x64
-          toolset: 14.40
 
       - name: Set Qt path
         shell: bash
