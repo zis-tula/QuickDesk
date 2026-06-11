@@ -1,4 +1,4 @@
-name: BRVS Chroma Remote Desktop - Windows Build (Ninja)
+name: BRVS Chroma Remote Desktop - Windows Build
 
 on:
   push:
@@ -13,7 +13,6 @@ permissions:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   QT_VERSION: '6.8.3'
-  CMAKE_GENERATOR: Ninja
 
 jobs:
   build-windows:
@@ -22,9 +21,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Ninja
-        shell: pwsh
-        run: choco install ninja -y --no-progress
+      - name: Setup MSVC Developer Command Prompt
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
 
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
@@ -37,6 +37,19 @@ jobs:
       - name: Set Qt path
         shell: bash
         run: echo "ENV_QT_PATH=$(dirname "$QT_ROOT_DIR")" >> $GITHUB_ENV
+
+      - name: Detect VS environment
+        shell: pwsh
+        run: |
+          $vs_install = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath
+          echo "ENV_VS_INSTALL=$vs_install" >> $env:GITHUB_ENV
+
+          $redist_root = Join-Path $vs_install "VC\Redist\MSVC"
+          $latest = Get-ChildItem $redist_root -Directory |
+            Where-Object { $_.Name -match '^\d+\.' } |
+            Sort.Object Name -Descending |
+            Select.Object -First 1
+          echo "ENV_VCRUNTIME_VERSION=$($latest.Name)" >> $env:GITHUB_ENV
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -55,7 +68,6 @@ jobs:
         shell: cmd
         env:
           ENV_QUICKDESK_API_KEY: ${{ secrets.QUICKDESK_API_KEY }}
-          CMAKE_GENERATOR: Ninja
         run: call scripts\build_qd_win.bat Release
 
       - name: Build MCP Bridge
