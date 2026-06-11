@@ -21,11 +21,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup MSVC Developer Command Prompt
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x64
-
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
@@ -51,11 +46,21 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('quickdesk-mcp/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
-      - name: Build QuickDesk
+      - name: Build QuickDesk + Activate VS Env
         shell: cmd
         env:
           ENV_QUICKDESK_API_KEY: ${{ secrets.QUICKDESK_API_KEY }}
-        run: call scripts\build_qd_win.bat Release
+        run: |
+          echo Activating Visual Studio environment...
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do (
+            if exist "%%i\Common7\Tools\VsDevCmd.bat" (
+              call "%%i\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64
+              goto :vsdevcmd_done
+            )
+          )
+          :vsdevcmd_done
+          echo VS environment activated.
+          call scripts\build_qd_win.bat Release
 
       - name: Verify GUI executable exists
         shell: pwsh
@@ -76,8 +81,7 @@ jobs:
               }
           }
           if (-not $found) {
-              Write-Host "CRITICAL ERROR: QuickDesk.exe NOT FOUND in any expected location!" -ForegroundColor Red
-              Write-Host "Listing all .exe files found:" -ForegroundColor Yellow
+              Write-Host "CRITICAL ERROR: QuickDesk.exe NOT FOUND!" -ForegroundColor Red
               Get-ChildItem -Path output, build-temp -Recurse -Include *.exe -ErrorAction SilentlyContinue | Select-Object FullName
               exit 1
           }
