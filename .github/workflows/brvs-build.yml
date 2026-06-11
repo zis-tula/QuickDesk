@@ -1,4 +1,4 @@
-name: BRVS Chroma Remote Desktop - Multi-Platform Build
+name: BRVS Chroma Remote Desktop - Windows Build
 
 on:
   push:
@@ -59,7 +59,7 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('quickdesk-mcp/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
-      - name: Build
+      - name: Build QuickDesk
         shell: cmd
         env:
           ENV_QUICKDESK_API_KEY: ${{ secrets.QUICKDESK_API_KEY }}
@@ -96,65 +96,14 @@ jobs:
           echo "version=$(cat version)" >> $GITHUB_OUTPUT
           echo "ref-name=${GITHUB_REF##*/}" >> $GITHUB_OUTPUT
 
-      - name: Upload artifact
+      - name: Upload BRVS Windows Installer
         uses: actions/upload-artifact@v4
         with:
           name: BRVS-Chroma-Remote-Desktop-win-x64-${{ steps.version.outputs.ref-name }}
           path: publish/QuickDesk-win-x64-setup.exe
 
-      - name: Upload WebClient artifact
+      - name: Upload WebClient
         uses: actions/upload-artifact@v4
         with:
           name: BRVS-Chroma-Remote-Desktop-WebClient-${{ steps.version.outputs.ref-name }}
           path: WebClient/dist/
-
-  build-macos:
-    name: Build macOS
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Qt
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: ${{ env.QT_VERSION }}
-          host: mac
-          target: desktop
-          arch: clang_64
-          cache: true
-          modules: 'qtmultimedia qtwebsockets'
-
-      - name: Set Qt path
-        shell: bash
-        run: echo "ENV_QT_PATH=$QT_ROOT_DIR" >> $GITHUB_ENV
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Build
-        shell: bash
-        env:
-          ENV_QUICKDESK_API_KEY: ${{ secrets.QUICKDESK_API_KEY }}
-        run: bash scripts/build_qd_mac.sh Release
-
-      - name: Build MCP Bridge
-        shell: bash
-        run: bash scripts/build_mcp_mac.sh Release || true
-
-      - name: Build Skill Host
-        shell: bash
-        run: bash scripts/build_skill_host_mac.sh Release || true
-
-      - name: Publish
-        shell: bash
-        run: bash scripts/publish_qd_mac.sh Release || true
-
-      - name: Package
-        shell: bash
-        run: bash scripts/package_qd_mac.sh Release || true
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: BRVS-Chroma-Remote-Desktop-mac-arm64
-          path: publish/
