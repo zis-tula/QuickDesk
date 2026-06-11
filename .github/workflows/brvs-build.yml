@@ -21,11 +21,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Activate Visual Studio 2022 Developer Command Prompt
-        shell: cmd
-        run: |
-          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64
-          echo VCVARS activated successfully
+      - name: Setup MSVC Developer Command Prompt
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
 
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
@@ -48,7 +47,7 @@ jobs:
           $redist_root = Join-Path $vs_install "VC\Redist\MSVC"
           $latest = Get-ChildItem $redist_root -Directory |
             Where-Object { $_.Name -match '^\d+\.' } |
-            Sort-Object Name -Descending |
+            Sort.Object Name -Descending |
             Select-Object -First 1
           echo "ENV_VCRUNTIME_VERSION=$($latest.Name)" >> $env:GITHUB_ENV
 
