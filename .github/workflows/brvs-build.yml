@@ -22,8 +22,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Ninja
-        uses: actions/setup-ninja@v1
+      - name: Install Ninja
+        shell: pwsh
+        run: choco install ninja -y --no-progress
 
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
