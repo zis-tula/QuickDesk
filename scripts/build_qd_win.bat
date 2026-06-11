@@ -93,19 +93,7 @@ if not exist "%temp_path%" (
 )
 cd /d "%temp_path%"
 
-:: Support CMAKE_GENERATOR override (for CI with Ninja)
-if defined CMAKE_GENERATOR (
-    if not "%CMAKE_GENERATOR%"=="" (
-        set cmake_generator=-G "%CMAKE_GENERATOR%"
-        if /i "%CMAKE_GENERATOR%"=="Ninja" set cmake_vs_build_mode=
-    ) else (
-        set cmake_generator=-G "Visual Studio 17 2022" -A %cmake_vs_build_mode%
-    )
-) else (
-    set cmake_generator=-G "Visual Studio 17 2022" -A %cmake_vs_build_mode%
-)
-
-set cmake_params=-DCMAKE_PREFIX_PATH=%qt_cmake_path% -DCMAKE_BUILD_TYPE=%build_mode% %cmake_generator%
+set cmake_params=-DCMAKE_PREFIX_PATH=%qt_cmake_path% -DCMAKE_BUILD_TYPE=%build_mode% -G "Visual Studio 17 2022" -A %cmake_vs_build_mode%
 
 if defined ENV_QUICKDESK_API_KEY (
     if not "%ENV_QUICKDESK_API_KEY%"=="" (
