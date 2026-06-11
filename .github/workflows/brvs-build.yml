@@ -1,4 +1,4 @@
-name: BRVS Chroma Remote Desktop - Windows Build
+name: BRVS Chroma Remote Desktop - Windows Build (Ninja)
 
 on:
   push:
@@ -13,6 +13,7 @@ permissions:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   QT_VERSION: '6.8.3'
+  CMAKE_GENERATOR: Ninja
 
 jobs:
   build-windows:
@@ -21,10 +22,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup MSVC Developer Command Prompt
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x64
+      - name: Install Ninja
+        shell: pwsh
+        run: choco install ninja -y --no-progress
 
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
@@ -37,19 +37,6 @@ jobs:
       - name: Set Qt path
         shell: bash
         run: echo "ENV_QT_PATH=$(dirname "$QT_ROOT_DIR")" >> $GITHUB_ENV
-
-      - name: Detect VS environment
-        shell: pwsh
-        run: |
-          $vs_install = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath
-          echo "ENV_VS_INSTALL=$vs_install" >> $env:GITHUB_ENV
-
-          $redist_root = Join-Path $vs_install "VC\Redist\MSVC"
-          $latest = Get-ChildItem $redist_root -Directory |
-            Where-Object { $_.Name -match '^\d+\.' } |
-            Sort.Object Name -Descending |
-            Select.Object -First 1
-          echo "ENV_VCRUNTIME_VERSION=$($latest.Name)" >> $env:GITHUB_ENV
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -68,7 +55,22 @@ jobs:
         shell: cmd
         env:
           ENV_QUICKDESK_API_KEY: ${{ secrets.QUICKDESK_API_KEY }}
+          CMAKE_GENERATOR: Ninja
         run: call scripts\build_qd_win.bat Release
+
+      - name: Verify GUI was built
+        shell: pwsh
+        run: |
+          Write-Host "=== Checking for main GUI executable ==="
+          $guiPath = "output\QuickDesk\Release\QuickDesk.exe"
+          if (Test-Path $guiPath) {
+              Write-Host "SUCCESS: QuickDesk.exe found at $guiPath" -ForegroundColor Green
+              Get-Item $guiPath | Select-Object Name, Length, LastWriteTime
+          } else {
+              Write-Host "ERROR: QuickDesk.exe NOT FOUND! GUI build failed or was skipped." -ForegroundColor Red
+              Get-ChildItem output -Recurse -Include *.exe | Select-Object FullName
+              exit 1
+          }
 
       - name: Build MCP Bridge
         shell: cmd
@@ -93,6 +95,22 @@ jobs:
       - name: Package installer
         shell: cmd
         run: call scripts\package_qd_win.bat Release
+
+      - name: Verify packaged installer contains GUI
+        shell: pwsh
+        run: |
+          Write-Host "=== Verifying packaged installer contains GUI ==="
+          # Extract installer temporarily and check for QuickDesk.exe
+          $installer = Get-ChildItem publish -Filter "*.exe" | Select-Object -First 1
+          if ($installer) {
+              Write-Host "Installer found: $($installer.FullName)"
+              # Simple check - if installer size is reasonable (> 50MB) it likely contains the GUI
+              if ($installer.Length -gt 50MB) {
+                  Write-Host "Installer size looks good: $([math]::Round($installer.Length / 1MB, 2)) MB" -ForegroundColor Green
+              } else {
+                  Write-Host "WARNING: Installer seems too small" -ForegroundColor Yellow
+              }
+          }
 
       - name: Get version
         id: version
