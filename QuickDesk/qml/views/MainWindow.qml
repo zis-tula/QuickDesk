@@ -1,16 +1,34 @@
-import QtQuick 2.15
-import QtQuick.Controls 2.15
-import QtQuick.Layouts 1.15
+import QtQuick
+import QtQuick.Window
+import QtQuick.Controls
+import QtQuick.Layouts
+import QuickDesk 1.0
+
+import "../"
+import "../component"
+import "../pages"
+import "../quickdeskcomponent"
 
 ApplicationWindow {
     id: root
+    width: 900
+    height: 600
+    minimumWidth: 900
+    maximumWidth: 900
+    minimumHeight: 600
+    maximumHeight: 600
     visible: true
-    width: 1280
-    height: 800
-    title: "BRVS ChromaDesk"
+    title: qsTr("BRVS ChromaDesk")
+    color: Theme.background
+    
+    // Clean BRVS icon
+    icon.source: "qrc:/resources/brvs-logo-icon.png"
 
-    // TODO: replace with clean BRVS icon
-    // icon.source: "qrc:/resources/brvs-logo-icon.png"
+    onClosing: function(close) {
+        close.accepted = false
+        root.hide()
+        SystemTrayManager.minimizeToTray()
+    }
 
-    // ... rest of the file
+    // ... (rest of the original file remains unchanged)
 }
